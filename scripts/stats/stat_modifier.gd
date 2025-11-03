@@ -139,31 +139,31 @@ enum StatType {
 
 
 ## 工厂方法: 创建固定值修正器
-static func create_flat(stat: StatType, value: float, source: String = "") -> StatModifier:
+static func create_flat(stat: StatType, new_value: float, source: String = "") -> StatModifier:
 	var mod = StatModifier.new()
 	mod.stat_type = stat
 	mod.modifier_type = ModifierType.FLAT
-	mod.value = value
+	mod.value = new_value
 	mod.source_id = source
 	return mod
 
 
 ## 工厂方法: 创建百分比修正器
-static func create_percent(stat: StatType, value: float, source: String = "") -> StatModifier:
+static func create_percent(stat: StatType, new_value: float, source: String = "") -> StatModifier:
 	var mod = StatModifier.new()
 	mod.stat_type = stat
 	mod.modifier_type = ModifierType.PERCENT
-	mod.value = value
+	mod.value = new_value
 	mod.source_id = source
 	return mod
 
 
 ## 工厂方法: 创建覆盖值修正器
-static func create_override(stat: StatType, value: float, source: String = "") -> StatModifier:
+static func create_override(stat: StatType, new_value: float, source: String = "") -> StatModifier:
 	var mod = StatModifier.new()
 	mod.stat_type = stat
 	mod.modifier_type = ModifierType.OVERRIDE
-	mod.value = value
+	mod.value = new_value
 	mod.source_id = source
 	return mod
 

@@ -1,31 +1,25 @@
-[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="WeaponData" load_steps=4 format=3 uid="uid://evb73n8e54it"]
 
-[ext_resource type="Script" path="res://scripts/items/weapon_data.gd" id="1_weapon"]
+[ext_resource type="Script" uid="uid://cf2ttlpf51lak" path="res://scripts/items/weapon_data.gd" id="1_weapon"]
+[ext_resource type="Script" uid="uid://cgugri4krf0aa" path="res://scripts/stats/stat_modifier.gd" id="2_so57d"]
+
+[sub_resource type="Resource" id="Resource_0qjw4"]
+resource_local_to_scene = true
+script = ExtResource("2_so57d")
+stat_type = 3
+value = 10.0
+metadata/_custom_type_script = "uid://cgugri4krf0aa"
 
 [resource]
 script = ExtResource("1_weapon")
+min_physical_damage = 8.0
+max_physical_damage = 12.0
+equip_slot = 5
+stat_modifiers = Array[ExtResource("2_so57d")]([SubResource("Resource_0qjw4")])
+has_durability = true
 id = "iron_sword"
 item_name = "铁剑"
 description = "一把坚固的铁制长剑，适合初学者使用。"
-rarity = 0
-max_stack = 1
 weight = 3.5
 base_value = 50
-can_sell = true
-can_drop = true
-can_trade = true
-tags = ["weapon", "melee", "sword"]
-equip_slot = 5
-required_level = 1
-bind_on_equip = false
-has_durability = true
-max_durability = 100
-repair_cost_multiplier = 0.1
-weapon_type = 0
-is_two_handed = false
-attack_range = 60.0
-attack_speed = 1.0
-min_physical_damage = 8.0
-max_physical_damage = 12.0
-min_magic_damage = 0.0
-max_magic_damage = 0.0
+tags = Array[String](["weapon", "melee", "sword"])
