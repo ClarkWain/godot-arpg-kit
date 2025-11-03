@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="ConsumableData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/items/consumable_data.gd" id="1_consumable"]
+
+[resource]
+script = ExtResource("1_consumable")
+id = "health_potion_small"
+item_name = "小型生命药水"
+description = "恢复少量生命值的药水。在危急时刻能救你一命。"
+rarity = 0
+max_stack = 99
+weight = 0.1
+base_value = 10
+can_sell = true
+can_drop = true
+can_trade = true
+tags = ["consumable", "potion", "healing"]
+effect_type = 0
+use_time = 0.0
+cooldown = 1.0
+usable_in_combat = true
+effect_value = 50.0
+effect_duration = 0.0
+effect_per_second = 0.0
