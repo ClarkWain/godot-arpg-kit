@@ -26,6 +26,24 @@ func _ready():
 	
 	# 示例 6: 序列化与反序列化
 	example_serialization()
+	
+	# 额外示例: 随机属性装备
+	example_random_equipment()
+	
+	# 示例 7: 装备耐久度管理
+	example_durability_management()
+	
+	# 示例 8: 使用增益药水
+	example_use_buff_potion()
+	
+	# 示例 9: 装备等级需求
+	example_equip_requirement()
+	
+	# 示例 10: 任务物品特性
+	example_quest_item()
+	
+	# 示例 11: 物品标签系统
+	example_item_tags()
 
 
 ## ========== 示例 1: 创建武器实例 ==========
@@ -253,3 +271,179 @@ func example_random_equipment():
 			print("  ", mod.get_description())
 		
 		print()
+
+
+## ========== 示例 7: 装备耐久度管理 ==========
+func example_durability_management():
+	print("========== 示例 7: 装备耐久度管理 ==========")
+	
+	var sword_data = load("res://data/items/weapons/iron_sword.tres") as WeaponData
+	if sword_data and sword_data.has_durability:
+		var sword = ItemInstance.create(sword_data, 1)
+		
+		print("初始耐久度: ", sword.current_durability, " / ", sword_data.max_durability)
+		
+		# 减少耐久度
+		sword.reduce_durability(30)
+		print("减少30点耐久后: ", sword.current_durability)
+		
+		# 检查是否损坏
+		print("装备是否损坏: ", sword.is_broken())
+		
+		# 完全修理
+		sword.repair()
+		print("完全修理后耐久度: ", sword.current_durability)
+		
+		# 再次减少耐久度直到损坏
+		sword.reduce_durability(sword_data.max_durability)
+		print("耐久度耗尽后: ", sword.current_durability)
+		print("装备是否损坏: ", sword.is_broken())
+		
+		print()
+
+
+## ========== 示例 8: 使用增益药水 ==========
+func example_use_buff_potion():
+	print("========== 示例 8: 使用增益药水 ==========")
+	
+	# 创建角色
+	var player_stats = StatsComponent.new()
+	player_stats.base_stats = load("res://data/player_base_stats.tres")
+	add_child(player_stats)
+	
+	# 创建一个临时的力量药水数据
+	var strength_potion_data = ConsumableData.new()
+	strength_potion_data.id = "temp_strength_potion"
+	strength_potion_data.item_name = "力量药水"
+	strength_potion_data.effect_type = ConsumableData.EffectType.BUFF
+	strength_potion_data.effect_duration = 15.0 # 持续15秒
+	
+	var strength_mod = StatModifier.new()
+	strength_mod.stat_type = StatModifier.StatType.STRENGTH
+	strength_mod.modifier_type = StatModifier.ModifierType.FLAT
+	strength_mod.value = 5
+	strength_potion_data.temp_modifiers.append(strength_mod)
+	
+	var potion = ItemInstance.create(strength_potion_data, 1)
+	
+	print("使用前力量: ", player_stats.get_stat(StatModifier.StatType.STRENGTH))
+	
+	# 使用药水
+	print("使用: ", potion.item_data.item_name)
+	use_consumable_item(player_stats, potion)
+	
+	print("使用后力量: ", player_stats.get_stat(StatModifier.StatType.STRENGTH))
+	print("增益效果将持续 %.1f 秒" % strength_potion_data.effect_duration)
+	
+	# 可以在这里添加一个 Timer 来模拟增益效果的消失
+	
+	print()
+
+
+## ========== 示例 9: 装备等级需求 ==========
+func example_equip_requirement():
+	print("========== 示例 9: 装备等级需求 ==========")
+	
+	# 创建一个1级角色
+	var player_stats = StatsComponent.new()
+	player_stats.base_stats = load("res://data/player_base_stats.tres") # 假设基础等级为1
+	add_child(player_stats)
+	
+	# 创建一个需要10级的武器
+	var high_level_sword_data = WeaponData.new()
+	high_level_sword_data.item_name = "高级长剑"
+	high_level_sword_data.required_level = 10
+	
+	var sword = ItemInstance.create(high_level_sword_data, 1)
+	
+	print("玩家等级: ", player_stats.get_stat(StatModifier.StatType.LEVEL))
+	print("武器需求等级: ", high_level_sword_data.required_level)
+	
+	# 尝试装备
+	equip_weapon(player_stats, sword)
+	
+	print()
+
+
+## ========== 示例 10: 任务物品特性 ==========
+func example_quest_item():
+	print("========== 示例 10: 任务物品特性 ==========")
+	
+	# 创建一个任务物品数据
+	var quest_item_data = ItemData.new()
+	quest_item_data.id = "quest_letter"
+	quest_item_data.item_name = "一封密信"
+	quest_item_data.item_type = ItemData.ItemType.QUEST
+	quest_item_data.description = "一封来自神秘人的信件，似乎很重要。"
+	quest_item_data.can_sell = false
+	quest_item_data.can_drop = false
+	quest_item_data.can_trade = false
+	
+	var quest_item = ItemInstance.create(quest_item_data, 1)
+	
+	print("物品名称: ", quest_item.item_data.item_name)
+	print("物品类型: ", ItemData.ItemType.keys()[quest_item.item_data.item_type])
+	print("是否可出售: ", quest_item.item_data.can_sell)
+	print("是否可丢弃: ", quest_item.item_data.can_drop)
+	print("是否可交易: ", quest_item.item_data.can_trade)
+	
+	print()
+
+
+## ========== 示例 11: 物品标签系统 ==========
+func example_item_tags():
+	print("========== 示例 11: 物品标签系统 ==========")
+	
+	var sword_data = load("res://data/items/weapons/iron_sword.tres") as WeaponData
+	if sword_data:
+		print("初始标签: ", sword_data.tags)
+		
+		# 添加标签
+		sword_data.add_tag("weapon")
+		sword_data.add_tag("one-handed")
+		print("添加标签后: ", sword_data.tags)
+		
+		# 检查标签
+		print("是否包含 'weapon' 标签: ", sword_data.has_tag("weapon"))
+		print("是否包含 'magic' 标签: ", sword_data.has_tag("magic"))
+		
+		# 移除标签
+		sword_data.remove_tag("one-handed")
+		print("移除标签后: ", sword_data.tags)
+		
+		# 清理，恢复原状
+		sword_data.remove_tag("weapon")
+		
+		print()
+
+
+## 通用的消耗品使用函数
+func use_consumable_item(stats: StatsComponent, consumable_instance: ItemInstance):
+	if not consumable_instance or not consumable_instance.item_data is ConsumableData:
+		print("不是有效的消耗品实例!")
+		return
+	
+	var consumable = consumable_instance.item_data as ConsumableData
+	
+	match consumable.effect_type:
+		ConsumableData.EffectType.INSTANT_HEAL:
+			stats.heal(consumable.effect_value)
+			print("恢复了 %.0f 点生命值" % consumable.effect_value)
+		
+		ConsumableData.EffectType.INSTANT_MANA:
+			stats.restore_mana(consumable.effect_value)
+			print("恢复了 %.0f 点魔力值" % consumable.effect_value)
+		
+		ConsumableData.EffectType.BUFF:
+			# 应用临时增益
+			for mod in consumable.temp_modifiers:
+				var temp_mod = mod.duplicate() # 复制以避免修改源资源
+				temp_mod.set_duration(consumable.effect_duration)
+				stats.add_modifier(temp_mod)
+			print("获得增益效果 %.1f 秒" % consumable.effect_duration)
+		
+		_:
+			print("未处理的消耗品效果类型: ", consumable.get_effect_type_name())
+
+	# 减少堆叠
+	consumable_instance.stack_count -= 1

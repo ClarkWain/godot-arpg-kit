@@ -84,11 +84,13 @@ func _process_regeneration(delta: float) -> void:
 	# 生命回复 - 每秒触发一次
 	_health_regen_timer += delta
 	if _health_regen_timer >= 1.0:
+		var health_regen = get_stat(StatModifier.StatType.HEALTH_REGEN)
 		_health_regen_timer -= 1.0
-		if current_health < get_stat(StatModifier.StatType.MAX_HEALTH):
-			var health_regen = get_stat(StatModifier.StatType.HEALTH_REGEN)
-			if health_regen > 0:
+		if health_regen > 0:
+			if current_health < get_stat(StatModifier.StatType.MAX_HEALTH):
 				heal(health_regen)
+		elif health_regen < 0:
+			_apply_direct_health_reduction(-health_regen) # 针对负回复速率直接扣血，例如：中毒效果
 	
 	# 魔力回复 - 每秒触发一次
 	_mana_regen_timer += delta
@@ -336,9 +338,28 @@ func take_damage(
 	
 	return result
 
+## 扣除生命（伤害/失血，无视护甲等减伤）
+func lose_health(amount: float) -> void:
+	if amount <= 0:
+		push_error("lose_health 的数值必须为正")
+		return
+
+	var old_health = current_health
+	current_health = max(0, current_health - amount)
+	
+	if current_health != old_health:
+		health_changed.emit(current_health, get_stat(StatModifier.StatType.MAX_HEALTH))
+	
+	if current_health <= 0 and old_health > 0:
+		health_depleted.emit()
+
 
 ## 恢复生命
 func heal(amount: float) -> void:
+	if amount <= 0:
+		push_error("heal amount must be positive")
+		return
+
 	var old_health = current_health
 	var max_hp = get_stat(StatModifier.StatType.MAX_HEALTH)
 	current_health = min(max_hp, current_health + amount)
@@ -1130,11 +1151,28 @@ func _adjust_current_values_to_max() -> void:
 	if current_mana > max_mp:
 		current_mana = max_mp
 		mana_changed.emit(current_mana, max_mp)
-	
+
 	if current_stamina > max_stamina:
 		current_stamina = max_stamina
 		stamina_changed.emit(current_stamina, max_stamina)
 	
 	if current_energy_shield > max_shield:
 		current_energy_shield = max_shield
-		energy_shield_changed.emit(current_energy_shield, max_shield)
+	energy_shield_changed.emit(current_energy_shield, max_shield)
+
+
+## ========== 战斗方法 ==========
+
+func _apply_direct_health_reduction(amount: float) -> void:
+	"""直接扣除生命值,不经过伤害计算流程,用于DoT等效果。"""
+	if amount <= 0:
+		return
+	
+	var old_health = current_health
+	current_health = max(0, current_health - amount)
+	
+	if current_health != old_health:
+		health_changed.emit(current_health, get_stat(StatModifier.StatType.MAX_HEALTH))
+	
+	if current_health <= 0 and old_health > 0:
+		health_depleted.emit()
