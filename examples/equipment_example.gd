@@ -99,27 +99,27 @@ func example_set_bonus():
 	chest.id = "dragon_chest"
 	chest.item_name = "龙鳞胸甲"
 	chest.equip_slot = EquipmentData.EquipSlot.CHEST
-	chest.set_id = "dragon_set"
-	chest.set_name = "龙鳞套装"
+	chest.set_bonus_id = "dragon_set"
+	chest.set_bonus_name = "龙鳞套装"
 	chest.rarity = ItemData.Rarity.EPIC
 	
 	var legs = EquipmentData.new()
 	legs.id = "dragon_legs"
 	legs.item_name = "龙鳞腿甲"
 	legs.equip_slot = EquipmentData.EquipSlot.LEGS
-	legs.set_id = "dragon_set"
-	legs.set_name = "龙鳞套装"
+	legs.set_bonus_id = "dragon_set"
+	legs.set_bonus_name = "龙鳞套装"
 	legs.rarity = ItemData.Rarity.EPIC
 	
 	# 装备第一件
 	var chest_instance = ItemInstance.create(chest, 1)
 	equipment_manager.equip(chest_instance)
-	print("装备第1件套装: %s (%d/6)" % [chest.set_name, equipment_manager.get_set_piece_count("dragon_set")])
+	print("装备第1件套装: %s (%d/6)" % [chest.set_bonus_name, equipment_manager.get_set_piece_count("dragon_set")])
 	
 	# 装备第二件
 	var legs_instance = ItemInstance.create(legs, 1)
 	equipment_manager.equip(legs_instance)
-	print("装备第2件套装: %s (%d/6)" % [legs.set_name, equipment_manager.get_set_piece_count("dragon_set")])
+	print("装备第2件套装: %s (%d/6)" % [legs.set_bonus_name, equipment_manager.get_set_piece_count("dragon_set")])
 	
 	print()
 

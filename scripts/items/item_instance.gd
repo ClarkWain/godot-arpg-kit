@@ -250,8 +250,8 @@ static func from_dict(data: Dictionary, item_database: Dictionary) -> ItemInstan
 		push_error("ItemInstance.from_dict: 找不到物品 ID: " + item_id)
 		return null
 	
-	var item_data = item_database[item_id]
-	var instance = create(item_data, data.get("stack_count", 1))
+	var tmp_item_data = item_database[item_id]
+	var instance = create(tmp_item_data, data.get("stack_count", 1))
 	
 	instance.instance_id = data.get("instance_id", instance.instance_id)
 	instance.is_bound = data.get("is_bound", false)

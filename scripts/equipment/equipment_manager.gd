@@ -82,7 +82,7 @@ func equip(item: ItemInstance, auto_swap: bool = true) -> bool:
 	_apply_item_modifiers(item, slot)
 	
 	# 更新套装
-	_update_set_bonuses(equip_data.set_id, 1)
+	_update_set_bonuses(equip_data.set_bonus_id, 1)
 	
 	# 标记为已绑定
 	if equip_data.bind_on_equip:
@@ -110,7 +110,7 @@ func unequip(slot: EquipmentData.EquipSlot, to_inventory: bool = true) -> bool:
 	
 	# 更新套装
 	var equip_data = item.item_data as EquipmentData
-	_update_set_bonuses(equip_data.set_id, -1)
+	_update_set_bonuses(equip_data.set_bonus_id, -1)
 	
 	# 移除装备
 	equipped_items[slot] = null

@@ -168,8 +168,8 @@ func get_full_description() -> String:
 		desc += "\n[color=yellow]%s[/color]\n" % special_effect_description
 	
 	# 套装信息
-	if set_id != "":
-		desc += "\n[color=orange]套装: %s[/color]" % set_name
+	if set_bonus_id != "":
+		desc += "\n[color=orange]套装: %s[/color]" % set_bonus_name
 		if set_bonus_description != "":
 			desc += "\n%s\n" % set_bonus_description
 	

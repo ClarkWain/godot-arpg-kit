@@ -47,9 +47,9 @@ enum EquipSlot {
 ## ========== 套装系统 ==========
 @export_group("Set Bonus")
 ## 套装ID (相同ID的装备可以触发套装效果)
-@export var set_id: String = ""
+@export var set_bonus_id: String = ""
 ## 套装名称
-@export var set_name: String = ""
+@export var set_bonus_name: String = ""
 ## 套装效果描述
 @export_multiline var set_bonus_description: String = ""
 
@@ -127,8 +127,8 @@ func get_full_description() -> String:
 		desc += "\n[color=yellow]%s[/color]\n" % special_effect_description
 	
 	# 套装信息
-	if set_id != "":
-		desc += "\n[color=orange]套装: %s[/color]" % set_name
+	if set_bonus_id != "":
+		desc += "\n[color=orange]套装: %s[/color]" % set_bonus_name
 		if set_bonus_description != "":
 			desc += "\n%s\n" % set_bonus_description
 	
