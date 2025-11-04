@@ -1418,9 +1418,9 @@ func test_7_9_stress_test():
 
 ## ========== 测试辅助函数 ==========
 
-func test_start(name: String):
+func test_start(_name: String):
 	test_total += 1
-	print("\n测试 %s:" % name)
+	print("\n测试 %s:" % _name)
 
 
 func test_end():
@@ -1475,7 +1475,7 @@ func print_test_summary():
 	print("总测试数: %d" % test_total)
 	print("通过: %d" % test_passed)
 	print("失败: %d" % test_failed)
-	print("通过率: %.1f%%" % ((float(test_passed) / test_total) * 100 if test_total > 0 else 0))
+	print("通过率: %.1f%%" % ((float(test_passed) / test_total) * 100 if test_total > 0 else 0.0))
 	for i in test_failed_reason:
 		print("未通过用例：%s" % [i])
 	print("=".repeat(60))
