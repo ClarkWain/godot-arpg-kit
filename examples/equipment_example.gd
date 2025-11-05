@@ -65,7 +65,9 @@ func example_equip_armor():
 	# 添加属性加成
 	var armor_mod = StatModifier.create_flat(StatModifier.StatType.ARMOR, 15.0, "iron_helmet")
 	var hp_mod = StatModifier.create_flat(StatModifier.StatType.MAX_HEALTH, 50.0, "iron_helmet")
-	helmet.stat_modifiers = [armor_mod, hp_mod]
+	helmet.stat_modifiers.clear()
+	helmet.stat_modifiers.append(armor_mod)
+	helmet.stat_modifiers.append(hp_mod)
 	
 	var helmet_instance = ItemInstance.create(helmet, 1)
 	

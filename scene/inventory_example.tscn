@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3 uid="uid://b4mttedy3d5g5"]
+
+[ext_resource type="Script" uid="uid://om13trqa5n2x" path="res://examples/inventory_example.gd" id="1_kw4r4"]
+[ext_resource type="Script" uid="uid://cakqrgvw8ly4w" path="res://scripts/inventory/inventory_component.gd" id="2_rb456"]
+
+[node name="inventory_example" type="Node2D"]
+script = ExtResource("1_kw4r4")
+
+[node name="InventoryComponent" type="Node" parent="."]
+script = ExtResource("2_rb456")
+metadata/_custom_type_script = "uid://cakqrgvw8ly4w"
