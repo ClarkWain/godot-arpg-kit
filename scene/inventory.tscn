@@ -1,0 +1,63 @@
+[gd_scene load_steps=6 format=3 uid="uid://ceeehqfl8b1n3"]
+
+[ext_resource type="Script" uid="uid://cwn288wubgdg8" path="res://scene/inventory.gd" id="1_ql1wb"]
+[ext_resource type="Script" uid="uid://cakqrgvw8ly4w" path="res://scripts/inventory/inventory_component.gd" id="2_fb012"]
+[ext_resource type="Texture2D" uid="uid://b5hpxhppl3ntp" path="res://icons/bg.png" id="2_kpipp"]
+
+[sub_resource type="Theme" id="Theme_ql1wb"]
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_jj3rf"]
+texture = ExtResource("2_kpipp")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 27.0
+texture_margin_bottom = 26.0
+
+[node name="InventoryWindow" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_ql1wb")
+
+[node name="PanelContainer" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -20.0
+offset_top = -20.0
+offset_right = 20.0
+offset_bottom = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("Theme_ql1wb")
+theme_override_styles/panel = SubResource("StyleBoxTexture_jj3rf")
+
+[node name="MarginContainer" type="MarginContainer" parent="PanelContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="PanelContainer/MarginContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "仓库"
+
+[node name="SlotGrid" type="GridContainer" parent="PanelContainer/MarginContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+columns = 8
+
+[node name="InventoryComponent" type="Node" parent="."]
+script = ExtResource("2_fb012")
+slot_count = 30
+metadata/_custom_type_script = "uid://cakqrgvw8ly4w"

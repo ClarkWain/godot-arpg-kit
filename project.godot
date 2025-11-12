@@ -11,10 +11,19 @@ config_version=5
 [application]
 
 config/name="ARPG_TEST"
-run/main_scene="uid://bt57kugs0mxmh"
+run/main_scene="uid://ceeehqfl8b1n3"
 config/features=PackedStringArray("4.5", "Mobile")
 config/icon="res://icon.svg"
 
+[display]
+
+window/size/viewport_width=640
+window/size/viewport_height=360
+window/size/window_width_override=1152
+window/size/window_height_override=648
+window/stretch/mode="viewport"
+
 [rendering]
 
+textures/canvas_textures/default_texture_filter=0
 renderer/rendering_method="mobile"

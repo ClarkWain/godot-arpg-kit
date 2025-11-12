@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=3 format=3 uid="uid://b3pgs1k368npn"]
+
+[ext_resource type="Script" uid="uid://dujsfofpk006k" path="res://scripts/items/item_data.gd" id="1_item"]
+[ext_resource type="Texture2D" uid="uid://ds1ocgdvdwkqx" path="res://icons/my_sword_02.png" id="1_s8ojg"]
+
+[resource]
+script = ExtResource("1_item")
+id = "fb1577"
+item_name = "图标 fb1577"
+description = "基于 icons/fb1577.png 自动生成的物品资源。"
+icon = ExtResource("1_s8ojg")
+max_stack = 99
+weight = 0.1
+tags = Array[String](["generated", "icon"])

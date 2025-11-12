@@ -1,0 +1,21 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/items/item_data.gd" id="1_item"]
+[ext_resource type="Texture2D" path="res://icons/fb1585.png" id="2_icon"]
+
+[resource]
+script = ExtResource("1_item")
+
+id = "fb1585"
+item_name = "图标 fb1585"
+description = "基于 icons/fb1585.png 自动生成的物品资源。"
+icon = ExtResource("2_icon")
+item_type = 2
+rarity = 0
+max_stack = 99
+weight = 0.1
+base_value = 5
+can_sell = true
+can_drop = true
+can_trade = true
+tags = Array[String](["generated","icon"])

@@ -6,10 +6,6 @@ extends Node
 ## 管理角色的物品存储，支持格子系统、重量限制、自动堆叠等
 ## 适用于 2D ARPG 的最佳实践设计
 
-const ItemInstance = preload("res://scripts/items/item_instance.gd")
-const ConsumableData = preload("res://scripts/items/consumable_data.gd")
-const EquipmentData = preload("res://scripts/items/equipment_data.gd")
-
 ## ========== 信号 ==========
 signal item_added(item: ItemInstance, slot_index: int)
 signal item_removed(item: ItemInstance, slot_index: int)

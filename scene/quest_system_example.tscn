@@ -1,0 +1,68 @@
+[gd_scene load_steps=2 format=3 uid="uid://quest_example_001"]
+
+[ext_resource type="Script" path="res://scripts/quest/examples/quest_example_scene.gd" id="1"]
+
+[node name="QuestSystemExample" type="Node2D"]
+script = ExtResource("1")
+
+[node name="TaskManager" type="Node" parent="."]
+script = ExtResource("res://scripts/quest/task_manager.gd")
+
+[node name="QuestEventBus" type="Node" parent="."]
+script = ExtResource("res://scripts/quest/quest_event_bus.gd")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Panel" type="Panel" parent="UI"]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 420.0
+offset_bottom = 520.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+
+[node name="Title" type="Label" parent="UI/Panel/VBoxContainer"]
+layout_mode = 2
+text = "任务系统示例"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="UI/Panel/VBoxContainer"]
+layout_mode = 2
+
+[node name="AcceptTaskButton" type="Button" parent="UI/Panel/VBoxContainer"]
+layout_mode = 2
+text = "接取任务: 清理史莱姆"
+
+[node name="KillSlimeButton" type="Button" parent="UI/Panel/VBoxContainer"]
+layout_mode = 2
+text = "击杀1只史莱姆"
+
+[node name="CompleteTaskButton" type="Button" parent="UI/Panel/VBoxContainer"]
+layout_mode = 2
+text = "完成任务"
+
+[node name="ClaimRewardButton" type="Button" parent="UI/Panel/VBoxContainer"]
+layout_mode = 2
+text = "领取奖励"
+
+[node name="HSeparator2" type="HSeparator" parent="UI/Panel/VBoxContainer"]
+layout_mode = 2
+
+[node name="TaskInfo" type="RichTextLabel" parent="UI/Panel/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+text = "任务信息将显示在这里..."
+
+[connection signal="pressed" from="UI/Panel/VBoxContainer/AcceptTaskButton" to="." method="_on_accept_task_pressed"]
+[connection signal="pressed" from="UI/Panel/VBoxContainer/KillSlimeButton" to="." method="_on_kill_slime_pressed"]
+[connection signal="pressed" from="UI/Panel/VBoxContainer/CompleteTaskButton" to="." method="_on_complete_task_pressed"]
+[connection signal="pressed" from="UI/Panel/VBoxContainer/ClaimRewardButton" to="." method="_on_claim_reward_pressed"]
