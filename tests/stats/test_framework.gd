@@ -170,3 +170,11 @@ func generate_report() -> String:
 ## 打印报告
 func print_report() -> void:
 	print(generate_report())
+
+
+## 获取测试摘要
+func get_test_summary() -> String:
+	if total_tests == 0:
+		return "未运行测试"
+	var pass_rate = float(passed_tests) / total_tests * 100.0
+	return "通过 %d/%d (%.1f%%)" % [passed_tests, total_tests, pass_rate]
