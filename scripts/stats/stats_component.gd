@@ -131,6 +131,11 @@ func _process_regeneration(delta: float) -> void:
 
 ## 获取最终属性值 (带缓存)
 func get_stat(stat_type: StatModifier.StatType) -> float:
+	# 确保修正器字典已初始化
+	if _modifiers.is_empty():
+		for st in StatModifier.StatType.values():
+			_modifiers[st] = []
+	
 	if _is_dirty:
 		_recalculate_all_stats()
 	
@@ -146,6 +151,11 @@ func get_base_stat(stat_type: StatModifier.StatType) -> float:
 
 ## 添加修正器
 func add_modifier(modifier: StatModifier) -> void:
+	# 确保修正器字典已初始化
+	if _modifiers.is_empty():
+		for st in StatModifier.StatType.values():
+			_modifiers[st] = []
+	
 	_modifiers[modifier.stat_type].append(modifier)
 	
 	# 如果有持续时间,添加到计时列表
@@ -436,6 +446,11 @@ func _recalculate_all_stats() -> void:
 
 ## 计算单个属性的最终值
 func _calculate_stat(stat_type: StatModifier.StatType) -> float:
+	# 确保修正器字典已初始化
+	if _modifiers.is_empty():
+		for st in StatModifier.StatType.values():
+			_modifiers[st] = []
+	
 	# 获取基础值
 	var base_value = _get_base_value(stat_type)
 	
@@ -788,6 +803,11 @@ func from_dict(data: Dictionary) -> void:
 	if data.has("luck"):
 		base_stats.luck = data.luck
 	
+	# 确保修正器字典已初始化
+	if _modifiers.is_empty():
+		for stat_type in StatModifier.StatType.values():
+			_modifiers[stat_type] = []
+	
 	# 加载永久修正器
 	if data.has("permanent_modifiers"):
 		_deserialize_permanent_modifiers(data.permanent_modifiers)
@@ -1070,6 +1090,11 @@ func _apply_derived_bonuses(stat_type: StatModifier.StatType, base_value: float)
 
 ## 计算核心属性的最终值(不包括派生加成,避免循环依赖)
 func _calculate_core_stat(stat_type: StatModifier.StatType) -> float:
+	# 确保修正器字典已初始化
+	if _modifiers.is_empty():
+		for st in StatModifier.StatType.values():
+			_modifiers[st] = []
+	
 	# 只适用于核心属性: STRENGTH, AGILITY, INTELLIGENCE, VITALITY, LUCK
 	var base_value = _get_base_value(stat_type)
 	
