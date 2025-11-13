@@ -163,6 +163,7 @@ func test_state_objective_event_matching() -> void:
 	end_test(passed)
 
 ## 测试: 目标信号
+## 注意: 此测试在命令行模式下可能不可靠，建议在场景模式下运行
 func test_objective_signals() -> void:
 	start_test("目标信号")
 	
@@ -181,7 +182,7 @@ func test_objective_signals() -> void:
 	# 更新进度应该触发进度信号
 	obj.add_count(3)
 	
-	# 等待信号处理
+	# 等待信号处理（在命令行模式下可能不工作）
 	await Engine.get_main_loop().process_frame
 	
 	var passed = assert_equal(progress_count, 1, "进度更新应该触发信号")

@@ -230,10 +230,11 @@ func test_serialization() -> void:
 	end_test(passed)
 
 ## 测试: 信号发射
+## 注意: 此测试在命令行模式下可能不可靠，建议在场景模式下运行
 func test_signal_emission() -> void:
 	start_test("信号发射")
 	
-	var task_data = MockObjects.create_test_task_data("signal_test")
+	var task_data = MockObjects.create_test_task_data("test_signals")
 	var instance = TaskInstance.new(task_data)
 	
 	var state_changed_count = 0
@@ -248,7 +249,7 @@ func test_signal_emission() -> void:
 	# 改变状态应该触发信号
 	instance.set_state(TaskState.State.AVAILABLE)
 	
-	# 等待信号处理
+	# 等待信号处理（在命令行模式下可能不工作）
 	await Engine.get_main_loop().process_frame
 	
 	var passed = assert_equal(state_changed_count, 1, "状态改变应该触发信号")

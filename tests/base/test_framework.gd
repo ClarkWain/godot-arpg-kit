@@ -127,6 +127,8 @@ func assert_almost_equal(actual: float, expected: float, epsilon: float = 0.0001
 	else:
 		var msg = message if message != "" else "Expected %f but got %f (epsilon: %f)" % [expected, actual, epsilon]
 		push_error("[%s] %s: %s" % [suite_name, current_test, msg])
+		if results.size() > 0:
+			results[results.size() - 1].message = msg
 		return false
 
 ## 断言数组包含
@@ -136,6 +138,8 @@ func assert_contains(array: Array, value, message: String = "") -> bool:
 	else:
 		var msg = message if message != "" else "Array does not contain %s" % str(value)
 		push_error("[%s] %s: %s" % [suite_name, current_test, msg])
+		if results.size() > 0:
+			results[results.size() - 1].message = msg
 		return false
 
 ## 断言数组不包含
@@ -145,6 +149,68 @@ func assert_not_contains(array: Array, value, message: String = "") -> bool:
 	else:
 		var msg = message if message != "" else "Array contains %s" % str(value)
 		push_error("[%s] %s: %s" % [suite_name, current_test, msg])
+		if results.size() > 0:
+			results[results.size() - 1].message = msg
+		return false
+
+## 断言大于
+func assert_greater(actual, expected, message: String = "") -> bool:
+	if actual > expected:
+		return true
+	else:
+		var msg = message if message != "" else "Expected %s to be greater than %s" % [str(actual), str(expected)]
+		var error_msg = "[%s] %s: %s" % [suite_name, current_test, msg]
+		push_error(error_msg)
+		if results.size() > 0:
+			results[results.size() - 1].message = msg
+		return false
+
+## 断言大于等于
+func assert_greater_equal(actual, expected, message: String = "") -> bool:
+	if actual >= expected:
+		return true
+	else:
+		var msg = message if message != "" else "Expected %s to be greater than or equal to %s" % [str(actual), str(expected)]
+		var error_msg = "[%s] %s: %s" % [suite_name, current_test, msg]
+		push_error(error_msg)
+		if results.size() > 0:
+			results[results.size() - 1].message = msg
+		return false
+
+## 断言小于
+func assert_less(actual, expected, message: String = "") -> bool:
+	if actual < expected:
+		return true
+	else:
+		var msg = message if message != "" else "Expected %s to be less than %s" % [str(actual), str(expected)]
+		var error_msg = "[%s] %s: %s" % [suite_name, current_test, msg]
+		push_error(error_msg)
+		if results.size() > 0:
+			results[results.size() - 1].message = msg
+		return false
+
+## 断言小于等于
+func assert_less_equal(actual, expected, message: String = "") -> bool:
+	if actual <= expected:
+		return true
+	else:
+		var msg = message if message != "" else "Expected %s to be less than or equal to %s" % [str(actual), str(expected)]
+		var error_msg = "[%s] %s: %s" % [suite_name, current_test, msg]
+		push_error(error_msg)
+		if results.size() > 0:
+			results[results.size() - 1].message = msg
+		return false
+
+## 断言字符串不为空
+func assert_not_empty(value: String, message: String = "") -> bool:
+	if value != "":
+		return true
+	else:
+		var msg = message if message != "" else "Expected non-empty string"
+		var error_msg = "[%s] %s: %s" % [suite_name, current_test, msg]
+		push_error(error_msg)
+		if results.size() > 0:
+			results[results.size() - 1].message = msg
 		return false
 
 ## 生成报告
@@ -170,7 +236,6 @@ func generate_report() -> String:
 ## 打印报告
 func print_report() -> void:
 	print(generate_report())
-
 
 ## 获取测试摘要
 func get_test_summary() -> String:
