@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://combat_test_scene"]
+
+[ext_resource type="Script" path="res://tests/combat/run_combat_tests.gd" id="1"]
+
+[node name="CombatTestRunner" type="Node"]
+script = ExtResource("1")

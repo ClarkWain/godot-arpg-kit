@@ -29,10 +29,18 @@ tests/
 │   ├── test_consumable_data.gd    # ConsumableData 测试 (2/2)
 │   ├── test_weapon_data.gd        # WeaponData 测试 (3/3)
 │   └── run_item_tests.gd          # 测试运行脚本
-└── loot/                           # 掉落系统测试 (10 个测试)
-    ├── test_loot_entry.gd         # LootEntry 测试 (5/5)
-    ├── test_loot_table.gd         # LootTable 测试 (5/5)
-    └── run_loot_tests.gd          # 测试运行脚本
+├── loot/                           # 掉落系统测试 (10 个测试)
+│   ├── test_loot_entry.gd         # LootEntry 测试 (5/5)
+│   ├── test_loot_table.gd         # LootTable 测试 (5/5)
+│   └── run_loot_tests.gd          # 测试运行脚本
+└── combat/                         # 战斗系统测试 (50 个测试)
+    ├── test_damage_calculator.gd  # DamageCalculator 测试 (9/9)
+    ├── test_combat_component.gd   # CombatComponent 测试 (9/9)
+    ├── test_status_effect_manager.gd # StatusEffectManager 测试 (11/11)
+    ├── test_skill_manager.gd      # SkillManager 测试 (10/10)
+    ├── test_integration.gd        # 集成测试 (8/8)
+    ├── run_combat_tests.gd        # 测试运行脚本
+    └── combat_test_scene.tscn     # 测试场景
 ```
 
 ## 测试框架
@@ -91,6 +99,13 @@ godot --headless tests/loot/loot_system_test_scene.tscn
 godot --headless scene/stats_test_scene.tscn
 ```
 
+**Combat 系统测试：**
+```bash
+godot --headless -s tests/combat/run_combat_tests.gd
+# 或
+godot --headless tests/combat/combat_test_scene.tscn
+```
+
 ### 场景方式
 
 在 Godot 编辑器中直接运行对应的测试场景文件：
@@ -98,6 +113,7 @@ godot --headless scene/stats_test_scene.tscn
 - `tests/items/item_system_test_scene.tscn`
 - `tests/loot/loot_system_test_scene.tscn`
 - `scene/stats_test_scene.tscn`
+- `tests/combat/combat_test_scene.tscn`
 
 ## 测试覆盖率
 
@@ -124,6 +140,29 @@ godot --headless scene/stats_test_scene.tscn
 - **总计**: 10 个测试，全部通过
 - **LootEntry**: 5/5 (100%)
 - **LootTable**: 5/5 (100%)
+
+### Combat 系统 (新增)
+- **总计**: 50 个测试
+- **DamageCalculator**: 9 个测试
+  - 基础伤害计算、属性加成、暴击、防御削减
+  - 闪避/格挡、元素反应、护盾吸收
+  - 护甲穿透、真实伤害
+- **CombatComponent**: 9 个测试
+  - 初始化、攻击目标、接收伤害
+  - 状态转换、连击系统、无敌状态
+  - 死亡处理、治疗、信号
+- **StatusEffectManager**: 11 个测试
+  - 注册/添加/移除效果、效果叠加
+  - DOT/HOT效果、Buff属性修改
+  - 护盾系统、净化、元素追踪、序列化
+- **SkillManager**: 10 个测试
+  - 注册/装备/卸载技能、使用技能
+  - 冷却管理、资源消耗、施法时间
+  - 施法距离、打断施法、序列化
+- **Integration**: 8 个测试
+  - 完整战斗流程、技能附加状态效果
+  - 元素连招、Buff影响伤害
+  - DOT击杀、护盾抵挡、装备集成、任务事件集成
 
 ## 已知限制
 
