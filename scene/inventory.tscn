@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3 uid="uid://ceeehqfl8b1n3"]
 
 [ext_resource type="Script" uid="uid://cwn288wubgdg8" path="res://scene/inventory.gd" id="1_ql1wb"]
-[ext_resource type="Script" uid="uid://cakqrgvw8ly4w" path="res://scripts/inventory/inventory_component.gd" id="2_fb012"]
+[ext_resource type="Script" uid="uid://cakqrgvw8ly4w" path="res://scripts/inventory/inventory_manager.gd" id="2_fb012"]
 [ext_resource type="Texture2D" uid="uid://b5hpxhppl3ntp" path="res://icons/bg.png" id="2_kpipp"]
 
 [sub_resource type="Theme" id="Theme_ql1wb"]
@@ -57,7 +57,7 @@ unique_name_in_owner = true
 layout_mode = 2
 columns = 8
 
-[node name="InventoryComponent" type="Node" parent="."]
+[node name="InventoryManager" type="Node" parent="."]
 script = ExtResource("2_fb012")
 slot_count = 30
 metadata/_custom_type_script = "uid://cakqrgvw8ly4w"

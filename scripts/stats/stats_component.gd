@@ -1,4 +1,3 @@
-# res://scripts/stats/stats_component.gd
 class_name StatsComponent
 extends Node
 ## 属性组件

@@ -1,4 +1,3 @@
-# res://scripts/loot/dropped_item.gd
 class_name DroppedItem
 extends Area2D
 ## 掉落物实体

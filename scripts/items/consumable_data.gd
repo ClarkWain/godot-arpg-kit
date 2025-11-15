@@ -1,4 +1,3 @@
-# res://scripts/items/consumable_data.gd
 class_name ConsumableData
 extends ItemData
 ## 消耗品数据类

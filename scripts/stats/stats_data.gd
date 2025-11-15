@@ -1,4 +1,3 @@
-# res://scripts/stats/stats_data.gd
 class_name StatsData
 extends Resource
 ## 角色属性数据资源

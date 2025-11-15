@@ -1,4 +1,3 @@
-# res://scripts/loot/loot_table.gd
 class_name LootTable
 extends Resource
 ## 掉落表

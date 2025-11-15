@@ -1,4 +1,3 @@
-# res://scripts/items/item_data.gd
 class_name ItemData
 extends Resource
 ## 物品基础数据类

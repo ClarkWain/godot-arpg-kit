@@ -12,7 +12,7 @@ class MockPlayer extends Node:
 	func _init() -> void:
 		inventory = MockInventory.new()
 		add_child(inventory)
-		inventory.name = "InventoryComponent"
+		inventory.name = "InventoryManager"
 	
 	func get_level() -> int:
 		return level

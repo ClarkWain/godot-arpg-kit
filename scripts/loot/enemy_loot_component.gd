@@ -1,4 +1,3 @@
-# res://scripts/loot/enemy_loot_component.gd
 class_name EnemyLootComponent
 extends Node
 ## 敌人掉落组件

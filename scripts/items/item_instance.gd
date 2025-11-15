@@ -1,4 +1,3 @@
-# res://scripts/items/item_instance.gd
 class_name ItemInstance
 extends RefCounted
 ## 物品实例类

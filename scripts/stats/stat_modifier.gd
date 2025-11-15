@@ -1,4 +1,3 @@
-# res://scripts/stats/stat_modifier.gd
 class_name StatModifier
 extends Resource
 ## 属性修正器

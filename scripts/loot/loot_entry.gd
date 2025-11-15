@@ -1,4 +1,3 @@
-# res://scripts/loot/loot_entry.gd
 class_name LootEntry
 extends Resource
 ## 掉落条目

@@ -1,4 +1,3 @@
-# res://scripts/stats/luck_system.gd
 class_name LuckSystem
 extends Node
 ## 幸运系统

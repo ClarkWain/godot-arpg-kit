@@ -1,5 +1,4 @@
-# res://scripts/inventory/inventory_component.gd
-class_name InventoryComponent
+class_name InventoryManager
 extends Node
 ## 背包组件
 ##

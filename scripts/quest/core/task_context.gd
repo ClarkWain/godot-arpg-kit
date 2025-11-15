@@ -29,8 +29,8 @@ func get_inventory() -> Node:
 	if not player:
 		return null
 	
-	if player.has_node("InventoryComponent"):
-		return player.get_node("InventoryComponent")
+	if player.has_node("InventoryManager"):
+		return player.get_node("InventoryManager")
 	elif player.has_method("get_inventory"):
 		return player.get_inventory()
 	

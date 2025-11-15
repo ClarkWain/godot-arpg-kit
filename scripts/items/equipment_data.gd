@@ -1,4 +1,3 @@
-# res://scripts/items/equipment_data.gd
 class_name EquipmentData
 extends ItemData
 ## 装备数据类

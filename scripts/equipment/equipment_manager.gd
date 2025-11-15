@@ -1,4 +1,3 @@
-# res://scripts/equipment/equipment_manager.gd
 class_name EquipmentManager
 extends Node
 ## 装备管理器
@@ -20,7 +19,7 @@ signal equipment_broken(slot: EquipmentData.EquipSlot, item: ItemInstance)
 ## 角色属性组件引用
 @export var stats_component: StatsComponent
 ## 背包组件引用（用于装备/卸下时的物品转移）
-@export var inventory: InventoryComponent
+@export var inventory: InventoryManager
 
 @export_group("Features")
 ## 是否启用耐久度消耗

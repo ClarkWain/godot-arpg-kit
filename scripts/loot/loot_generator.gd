@@ -1,4 +1,3 @@
-# res://scripts/loot/loot_generator.gd
 class_name LootGenerator
 extends Node
 ## 掉落生成器
