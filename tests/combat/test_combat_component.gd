@@ -27,6 +27,7 @@ func test_initialization() -> void:
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
 	entity.add_child(combat)
+	combat._ready()
 	
 	var passed = assert_not_null(combat, "CombatComponent应成功创建")
 	passed = assert_equal(combat.combat_state, CombatState.State.IDLE, "初始状态应为IDLE") and passed
@@ -44,22 +45,43 @@ func test_attack_target() -> void:
 	var attacker = Node2D.new()
 	var attacker_stats = StatsComponent.new()
 	attacker_stats.name = "StatsComponent"
+	var attacker_base = StatsData.new()
+	attacker_base.strength = 0
+	attacker_base.agility = 0
+	attacker_base.intelligence = 0
+	attacker_base.vitality = 0
+	attacker_base.luck = 0
+	attacker_stats.base_stats = attacker_base
 	attacker.add_child(attacker_stats)
+	attacker_stats._ready()
 	var attacker_combat = CombatComponent.new()
 	attacker_combat.name = "CombatComponent"
+	attacker_combat.entity = attacker
+	attacker_combat.stats_component = attacker_stats
 	attacker.add_child(attacker_combat)
+	attacker_combat._ready()
 	
 	# 创建目标
 	var target = Node2D.new()
 	var target_stats = StatsComponent.new()
 	target_stats.name = "StatsComponent"
 	var target_base = StatsData.new()
+	target_base.strength = 0
+	target_base.agility = 0
+	target_base.intelligence = 0
+	target_base.vitality = 0
+	target_base.luck = 0
 	target_base.max_health = 100.0
+	target_base.dodge_chance = 0 # 不允许闪避
 	target_stats.base_stats = target_base
 	target.add_child(target_stats)
+	target_stats._ready()
 	var target_combat = CombatComponent.new()
 	target_combat.name = "CombatComponent"
+	target_combat.entity = target
+	target_combat.stats_component = target_stats
 	target.add_child(target_combat)
+	target_combat._ready()
 	
 	# 执行攻击
 	var damage_info = attacker_combat.attack(target, 30.0, DamageInfo.DamageType.PHYSICAL)
@@ -81,22 +103,31 @@ func test_receive_damage() -> void:
 	var stats = StatsComponent.new()
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
+	base_stats.strength = 0
+	base_stats.agility = 0
+	base_stats.intelligence = 0
+	base_stats.vitality = 0
+	base_stats.luck = 0
 	base_stats.max_health = 100.0
+	base_stats.armor = 0.0 # 清除基础护甲
+	base_stats.dodge_chance = 0.0 # 清除闪避
 	stats.base_stats = base_stats
 	entity.add_child(stats)
+	stats._ready()
 	
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
 	entity.add_child(combat)
+	combat._ready()
 	
-	var initial_health = stats.get_stat("health")
+	var initial_health = stats.current_health
 	
 	# 接收伤害
 	var damage_info = DamageInfo.new(null, entity, 30.0, DamageInfo.DamageType.PHYSICAL)
 	damage_info.final_damage = 30.0
 	combat.receive_damage(damage_info)
 	
-	var current_health = stats.get_stat("health")
+	var current_health = stats.current_health
 	
 	var passed = assert_less(current_health, initial_health, "生命值应减少")
 	passed = assert_almost_equal(current_health, initial_health - 30.0, 0.1, "生命值应减少30") and passed
@@ -142,11 +173,15 @@ func test_combo_system() -> void:
 	var attacker = Node2D.new()
 	var attacker_stats = StatsComponent.new()
 	attacker_stats.name = "StatsComponent"
+	var attacker_base = StatsData.new()
+	attacker_stats.base_stats = attacker_base
 	attacker.add_child(attacker_stats)
+	attacker_stats._ready()
 	var attacker_combat = CombatComponent.new()
 	attacker_combat.name = "CombatComponent"
 	attacker_combat.combo_window = 1.0  # 1秒连击窗口
 	attacker.add_child(attacker_combat)
+	attacker_combat._ready()
 	
 	var target = Node2D.new()
 	var target_stats = StatsComponent.new()
@@ -155,9 +190,11 @@ func test_combo_system() -> void:
 	target_base.max_health = 1000.0
 	target_stats.base_stats = target_base
 	target.add_child(target_stats)
+	target_stats._ready()
 	var target_combat = CombatComponent.new()
 	target_combat.name = "CombatComponent"
 	target.add_child(target_combat)
+	target_combat._ready()
 	
 	# 连续攻击
 	attacker_combat.attack(target, 10.0)
@@ -181,16 +218,24 @@ func test_invincibility() -> void:
 	var stats = StatsComponent.new()
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
+	base_stats.strength = 0
+	base_stats.agility = 0
+	base_stats.intelligence = 0
+	base_stats.vitality = 0
+	base_stats.luck = 0
 	base_stats.max_health = 100.0
+	base_stats.armor = 0.0
 	stats.base_stats = base_stats
 	entity.add_child(stats)
+	stats._ready()
 	
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
 	combat.invincibility_duration = 0.5
 	entity.add_child(combat)
+	combat._ready()
 	
-	var initial_health = stats.get_stat("health")
+	var initial_health = stats.current_health
 	
 	# 第一次受伤
 	var damage_info1 = DamageInfo.new(null, entity, 30.0)
@@ -199,12 +244,16 @@ func test_invincibility() -> void:
 	
 	var passed = assert_true(combat.is_invincible, "受伤后应进入无敌状态")
 	
+	# 检查第一次受伤后的生命值
+	var health_after_first = stats.current_health
+	passed = assert_almost_equal(health_after_first, initial_health - 30.0, 0.1, "第一次受伤应扣30血") and passed
+	
 	# 无敌期间再次受伤
 	var damage_info2 = DamageInfo.new(null, entity, 30.0)
 	damage_info2.final_damage = 30.0
 	combat.receive_damage(damage_info2)
 	
-	var current_health = stats.get_stat("health")
+	var current_health = stats.current_health
 	passed = assert_almost_equal(current_health, initial_health - 30.0, 0.1, "无敌期间不应再受伤") and passed
 	
 	entity.free()
@@ -218,13 +267,21 @@ func test_death_handling() -> void:
 	var stats = StatsComponent.new()
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
+	base_stats.strength = 0
+	base_stats.agility = 0
+	base_stats.intelligence = 0
+	base_stats.vitality = 0
+	base_stats.luck = 0
 	base_stats.max_health = 100.0
+	base_stats.armor = 0.0
 	stats.base_stats = base_stats
 	entity.add_child(stats)
+	stats._ready()
 	
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
 	entity.add_child(combat)
+	combat._ready()
 	
 	# 造成致命伤害
 	stats.take_damage(100.0)
@@ -232,12 +289,12 @@ func test_death_handling() -> void:
 	var passed = assert_equal(combat.combat_state, CombatState.State.DEAD, "生命值为0应进入死亡状态")
 	
 	# 死亡后不应再受伤
-	var initial_health = stats.get_stat("health")
+	var initial_health = stats.current_health
 	var damage_info = DamageInfo.new(null, entity, 30.0)
 	damage_info.final_damage = 30.0
 	combat.receive_damage(damage_info)
 	
-	passed = assert_equal(stats.get_stat("health"), initial_health, "死亡后不应再受伤") and passed
+	passed = assert_equal(stats.current_health, initial_health, "死亡后不应再受伤") and passed
 	
 	entity.free()
 	end_test(passed)
@@ -250,21 +307,29 @@ func test_heal() -> void:
 	var stats = StatsComponent.new()
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
+	base_stats.strength = 0
+	base_stats.agility = 0
+	base_stats.intelligence = 0
+	base_stats.vitality = 0
+	base_stats.luck = 0
 	base_stats.max_health = 100.0
+	base_stats.armor = 0.0
 	stats.base_stats = base_stats
 	entity.add_child(stats)
+	stats._ready()
 	
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
 	entity.add_child(combat)
+	combat._ready()
 	
 	# 先受伤
 	stats.take_damage(50.0)
-	var damaged_health = stats.get_stat("health")
+	var damaged_health = stats.current_health
 	
 	# 治疗
 	var healed = combat.heal(30.0)
-	var current_health = stats.get_stat("health")
+	var current_health = stats.current_health
 	
 	var passed = assert_almost_equal(healed, 30.0, 0.1, "应治疗30点生命")
 	passed = assert_almost_equal(current_health, damaged_health + 30.0, 0.1, "生命值应增加30") and passed
@@ -279,32 +344,42 @@ func test_signals() -> void:
 	var attacker = Node2D.new()
 	var attacker_stats = StatsComponent.new()
 	attacker_stats.name = "StatsComponent"
+	var attacker_base = StatsData.new()
+	attacker_stats.base_stats = attacker_base
 	attacker.add_child(attacker_stats)
+	attacker_stats._ready()
 	var attacker_combat = CombatComponent.new()
 	attacker_combat.name = "CombatComponent"
 	attacker.add_child(attacker_combat)
+	attacker_combat._ready()
 	
 	var target = Node2D.new()
 	var target_stats = StatsComponent.new()
 	target_stats.name = "StatsComponent"
 	var target_base = StatsData.new()
+	target_base.strength = 0
+	target_base.agility = 0
+	target_base.intelligence = 0
+	target_base.vitality = 0
+	target_base.luck = 0
 	target_base.max_health = 100.0
 	target_stats.base_stats = target_base
 	target.add_child(target_stats)
+	target_stats._ready()
 	var target_combat = CombatComponent.new()
 	target_combat.name = "CombatComponent"
 	target.add_child(target_combat)
+	target_combat._ready()
 	
-	var damage_dealt_triggered = false
-	var damage_received_triggered = false
+	var signals_triggered = {"dealt": false, "received": false}
 	
-	attacker_combat.damage_dealt.connect(func(_t, _d): damage_dealt_triggered = true)
-	target_combat.damage_received.connect(func(_s, _d): damage_received_triggered = true)
+	attacker_combat.damage_dealt.connect(func(_t, _d): signals_triggered["dealt"] = true)
+	target_combat.damage_received.connect(func(_s, _d): signals_triggered["received"] = true)
 	
 	attacker_combat.attack(target, 30.0)
 	
-	var passed = assert_true(damage_dealt_triggered, "应触发damage_dealt信号")
-	passed = assert_true(damage_received_triggered, "应触发damage_received信号") and passed
+	var passed = assert_true(signals_triggered["dealt"], "应触发damage_dealt信号")
+	passed = assert_true(signals_triggered["received"], "应触发damage_received信号") and passed
 	
 	attacker.free()
 	target.free()

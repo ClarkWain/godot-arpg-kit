@@ -1,6 +1,6 @@
 ## 集成测试
 ## 测试任务系统的完整工作流程
-extends TestFramework
+extends QuestTestFramework
 
 var task_manager: TaskManager
 var mock_player: MockObjects.MockPlayer

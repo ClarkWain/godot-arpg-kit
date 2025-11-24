@@ -1,5 +1,6 @@
 ## LuckSystem测试
 ## 测试幸运系统工具方法的正确性
+class_name TestLuckSystem
 extends TestFramework
 
 func _init() -> void:

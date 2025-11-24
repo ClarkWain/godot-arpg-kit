@@ -31,11 +31,11 @@ signal equipment_broken(slot: EquipmentData.EquipSlot, item: ItemInstance)
 
 ## ========== 内部数据 ==========
 # 装备槽位字典 {EquipSlot: ItemInstance}
-var equipped_items: Dictionary = {}
+var equipped_items: Dictionary[EquipmentData.EquipSlot, ItemInstance] = {}
 # 套装计数 {set_id: count}
 var set_pieces: Dictionary = {}
 # 应用的修正器追踪 {EquipSlot: Array[StatModifier]}
-var applied_modifiers: Dictionary = {}
+var applied_modifiers: Dictionary[EquipmentData.EquipSlot, Array] = {}
 
 
 func _ready():

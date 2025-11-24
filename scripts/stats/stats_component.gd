@@ -48,7 +48,7 @@ var _energy_shield_delay_timer: float = 0.0	## 能量护盾延迟计时器
 
 ## ========== 内部数据 ==========
 var _modifiers: Dictionary[StatModifier.StatType, Array] = {}  		# {StatType: Array[StatModifier]}，存储所有修正器
-var _cached_stats: Dictionary = {}  	# {StatType: float}，缓存计算后的属性值
+var _cached_stats: Dictionary[StatModifier.StatType, float] = {}  	# {StatType: float}，缓存计算后的属性值
 var _is_dirty: bool = true			 	# 标记是否需要重新计算属性值
 var _timed_modifiers: Array[Dictionary] = []  # 临时修正器计时，格式: [{modifier: StatModifier, remaining_time: float}]
 
@@ -61,6 +61,10 @@ func _ready():
 	# 初始化修正器字典
 	for stat_type in StatModifier.StatType.values():
 		_modifiers[stat_type] = []
+	
+	# 强制重新计算所有属性
+	_mark_dirty()
+	_recalculate_all_stats()
 	
 	# 初始化当前值
 	current_health = get_stat(StatModifier.StatType.MAX_HEALTH)
@@ -83,8 +87,8 @@ func _process_regeneration(delta: float) -> void:
 	# 生命回复 - 每秒触发一次
 	_health_regen_timer += delta
 	if _health_regen_timer >= 1.0:
-		var health_regen = get_stat(StatModifier.StatType.HEALTH_REGEN)
 		_health_regen_timer -= 1.0
+		var health_regen = get_stat(StatModifier.StatType.HEALTH_REGEN)
 		if health_regen > 0:
 			if current_health < get_stat(StatModifier.StatType.MAX_HEALTH):
 				heal(health_regen)
@@ -230,7 +234,7 @@ func get_modifiers_for_stat(stat_type: StatModifier.StatType) -> Array:
 func take_damage(
 	amount: float,						# 伤害数值
 	damage_type: String = "physical",	# 伤害类型 ("physical" 或 "magic")
-	element: String = "",				# 元素类型 ("fire", "ice", "lightning", "poison", "dark", "holy")
+	element: StatModifier.ElementType = StatModifier.ElementType.NONE,	# 元素类型
 	can_dodge: bool = true,				# 是否可以闪避
 	is_blocking: bool = false			# 是否处于格挡状态
 ) -> Dictionary:
@@ -283,7 +287,7 @@ func take_damage(
 		result.final_damage = max(0, result.final_damage * (1.0 - block_reduction) - block_amount)
 	
 	# 第3步: 元素抗性
-	if element != "":
+	if element != StatModifier.ElementType.NONE:
 		var resistance = _get_element_resistance(element)
 		var resist_multiplier = 1.0 - (resistance / 100.0)
 		result.final_damage *= resist_multiplier
@@ -364,10 +368,10 @@ func lose_health(amount: float) -> void:
 
 
 ## 恢复生命
-func heal(amount: float) -> void:
+func heal(amount: float) -> float:
 	if amount <= 0:
 		push_error("heal amount must be positive")
-		return
+		return 0.0
 
 	var old_health = current_health
 	var max_hp = get_stat(StatModifier.StatType.MAX_HEALTH)
@@ -375,6 +379,8 @@ func heal(amount: float) -> void:
 	
 	if current_health != old_health:
 		health_changed.emit(current_health, max_hp)
+	
+	return current_health - old_health
 
 
 ## 恢复魔力
@@ -387,7 +393,7 @@ func restore_mana(amount: float) -> void:
 		mana_changed.emit(current_mana, max_mp)
 
 
-## 消耗魔力
+## 消耗魔力，返回是否成功
 func consume_mana(amount: float) -> bool:
 	if current_mana >= amount:
 		current_mana -= amount
@@ -406,7 +412,7 @@ func restore_stamina(amount: float) -> void:
 		stamina_changed.emit(current_stamina, max_stamina)
 
 
-## 消耗耐力
+## 消耗耐力，返回是否成功
 func consume_stamina(amount: float) -> bool:
 	if current_stamina >= amount:
 		current_stamina -= amount
@@ -580,7 +586,7 @@ func allocate_stat_point(stat_type: StatModifier.StatType, points: int = 1) -> b
 		StatModifier.StatType.LUCK:
 			base_stats.luck += points
 		_:
-			push_warning("只能分配核心属性点 (力量/敏捷/智力/体质/幸运)")
+			push_warning("只能分配核心属性点 (力量/敏捷/智力/体质/幸运), stat_type=%s" % StatModifier.StatType.keys()[stat_type])
 			return false
 	
 	# 扣除属性点
@@ -626,7 +632,7 @@ func get_available_stat_points() -> int:
 func calculate_damage(
 	base_damage: float = 0.0,				# 基础伤害(如果为0则使用物理攻击力)
 	damage_type: String = "physical",		# 伤害类型 ("physical" 或 "magic")
-	element: String = "",					# 元素类型
+	element: StatModifier.ElementType = StatModifier.ElementType.NONE,# 元素类型
 	can_crit: bool = true,					# 是否可以暴击
 	crit_chance_bonus: float = 0.0,			# 额外暴击率加成
 	damage_multiplier: float = 1.0			# 伤害倍率
@@ -664,19 +670,19 @@ func calculate_damage(
 			result.base_damage = get_stat(StatModifier.StatType.MAGIC_DAMAGE)
 	
 	# 第2步: 添加元素伤害
-	if element != "":
+	if element != StatModifier.ElementType.NONE:
 		match element:
-			"fire":
+			StatModifier.ElementType.FIRE:
 				result.elemental_damage = get_stat(StatModifier.StatType.FIRE_DAMAGE)
-			"ice":
+			StatModifier.ElementType.ICE:
 				result.elemental_damage = get_stat(StatModifier.StatType.ICE_DAMAGE)
-			"lightning":
+			StatModifier.ElementType.LIGHTNING:
 				result.elemental_damage = get_stat(StatModifier.StatType.LIGHTNING_DAMAGE)
-			"poison":
+			StatModifier.ElementType.POISON:
 				result.elemental_damage = get_stat(StatModifier.StatType.POISON_DAMAGE)
-			"dark":
+			StatModifier.ElementType.DARK:
 				result.elemental_damage = get_stat(StatModifier.StatType.DARK_DAMAGE)
-			"holy":
+			StatModifier.ElementType.HOLY:
 				result.elemental_damage = get_stat(StatModifier.StatType.HOLY_DAMAGE)
 	
 	# 第3步: 暴击判定
@@ -702,7 +708,7 @@ func deal_damage_to(
 	target: StatsComponent,
 	base_damage: float = 0.0,
 	damage_type: String = "physical",
-	element: String = "",
+	element: StatModifier.ElementType = StatModifier.ElementType.NONE,
 	can_crit: bool = true,
 	can_dodge: bool = true,
 	is_blocking: bool = false
@@ -861,7 +867,7 @@ func _deserialize_permanent_modifiers(modifiers_data: Array) -> void:
 
 ## ========== 调试和工具 ==========
 
-## 获取所有激活的修正器
+## 获取所有激活的修正器，返回字典格式，键为属性类型，值为修正器数组
 func get_all_active_modifiers() -> Dictionary:
 	var result = {}
 	for stat_type in _modifiers.keys():
@@ -1121,15 +1127,15 @@ func _calculate_core_stat(stat_type: StatModifier.StatType) -> float:
 
 
 ## 获取元素抗性
-func _get_element_resistance(element: String) -> float:
+func _get_element_resistance(element: StatModifier.ElementType) -> float:
 	var base_res = 0.0
 	match element:
-		"fire": base_res = get_stat(StatModifier.StatType.RES_FIRE)
-		"ice": base_res = get_stat(StatModifier.StatType.RES_ICE)
-		"lightning": base_res = get_stat(StatModifier.StatType.RES_LIGHTNING)
-		"poison": base_res = get_stat(StatModifier.StatType.RES_POISON)
-		"dark": base_res = get_stat(StatModifier.StatType.RES_DARK)
-		"holy": base_res = get_stat(StatModifier.StatType.RES_HOLY)
+		StatModifier.ElementType.FIRE: base_res = get_stat(StatModifier.StatType.RES_FIRE)
+		StatModifier.ElementType.ICE: base_res = get_stat(StatModifier.StatType.RES_ICE)
+		StatModifier.ElementType.LIGHTNING: base_res = get_stat(StatModifier.StatType.RES_LIGHTNING)
+		StatModifier.ElementType.POISON: base_res = get_stat(StatModifier.StatType.RES_POISON)
+		StatModifier.ElementType.DARK: base_res = get_stat(StatModifier.StatType.RES_DARK)
+		StatModifier.ElementType.HOLY: base_res = get_stat(StatModifier.StatType.RES_HOLY)
 	
 	# 加上全抗性加成
 	return base_res + get_stat(StatModifier.StatType.RES_ALL)

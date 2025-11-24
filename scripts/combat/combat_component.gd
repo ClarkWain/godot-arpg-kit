@@ -4,6 +4,9 @@
 class_name CombatComponent
 extends Node
 
+# 引入战斗事件总线
+const CombatEventBus = preload("res://scripts/combat/combat_event_bus.gd")
+
 ## 战斗实体引用
 @export var entity: Node = null
 
@@ -56,7 +59,7 @@ func _ready() -> void:
 	if stats_component and stats_component.has_signal("health_depleted"):
 		stats_component.health_depleted.connect(_on_health_depleted)
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	# 更新无敌状态
 	if is_invincible and Time.get_ticks_msec() / 1000.0 > invincibility_end_time:
 		is_invincible = false
@@ -88,7 +91,12 @@ func attack(target: Node, base_damage: float, damage_type: DamageInfo.DamageType
 	if not CombatState.can_attack(combat_state):
 		return null
 	
-	if not target or not target.has_method("receive_damage"):
+	if not target:
+		return null
+	
+	# 检查目标是否可以接收伤害
+	var can_receive_damage = target.has_method("receive_damage") or target.has_node("CombatComponent")
+	if not can_receive_damage:
 		return null
 	
 	# 创建伤害信息
@@ -114,13 +122,6 @@ func attack(target: Node, base_damage: float, damage_type: DamageInfo.DamageType
 	# 触发信号
 	damage_dealt.emit(target, damage_info)
 	
-	# 触发事件总线
-	if QuestEventBus.instance:
-		QuestEventBus.instance.damage_dealt.emit(
-			target.name if target else "unknown",
-			damage_info.final_damage
-		)
-	
 	return damage_info
 
 ## 接收伤害
@@ -137,10 +138,20 @@ func receive_damage(damage_info: DamageInfo) -> void:
 	if stats_component:
 		var actual_damage = damage_info.final_damage
 		
+		# 第1步: 临时护盾吸收 (来自StatusEffectManager)
+		if status_effect_manager:
+			actual_damage -= status_effect_manager.consume_shield(actual_damage)
+		
+		# 如果伤害被完全吸收，则提前结束
+		if actual_damage <= 0:
+			# 仍然触发信号，让UI可以显示 "吸收" 字样
+			damage_received.emit(damage_info.source, damage_info)
+			return
+			
 		# 触发受伤动画/效果
 		set_combat_state(CombatState.State.BEING_HIT)
 		
-		# 扣除生命值
+		# 第2步: 扣除生命值和能量护盾 (由StatsComponent内部处理)
 		stats_component.take_damage(actual_damage)
 		
 		# 应用状态效果
@@ -155,45 +166,33 @@ func receive_damage(damage_info: DamageInfo) -> void:
 		# 触发信号
 		damage_received.emit(damage_info.source, damage_info)
 		
-		# 触发事件总线
-		if QuestEventBus.instance:
-			QuestEventBus.instance.damage_received.emit(
-				damage_info.source.name if damage_info.source else "unknown",
-				actual_damage
-			)
-		
-		# 暴击事件
-		if damage_info.is_critical and QuestEventBus.instance:
-			QuestEventBus.instance.custom_event.emit("critical_hit", {
-				"attacker": damage_info.source,
-				"target": entity,
-				"damage": actual_damage
-			})
+		# 暴击事件（简化，不调用事件总线）
+		if damage_info.is_critical:
+			pass  # 仅通过 damaged 信号传递
 		
 		# 短暂无敌时间（避免连续受伤）
 		if invincibility_duration > 0:
 			is_invincible = true
 			invincibility_end_time = Time.get_ticks_msec() / 1000.0 + invincibility_duration
 		
-		# 恢复到空闲状态
-		await get_tree().create_timer(0.3).timeout
-		if combat_state == CombatState.State.BEING_HIT:
-			set_combat_state(CombatState.State.IDLE)
+		# 恢复到空闲状态（仅在场景树中时使用计时器）
+		if is_inside_tree():
+			var tree = get_tree()
+			if tree:
+				await tree.create_timer(0.3).timeout
+				if combat_state == CombatState.State.BEING_HIT:
+					set_combat_state(CombatState.State.IDLE)
+		else:
+			# 如果不在场景树中（如测试环境），直接恢复
+			if combat_state == CombatState.State.BEING_HIT:
+				set_combat_state(CombatState.State.IDLE)
 
 ## 治疗
-func heal(amount: float, source: Node = null) -> float:
+func heal(amount: float, _source: Node = null) -> float:
 	if not stats_component:
 		return 0.0
 	
 	var actual_heal = stats_component.heal(amount)
-	
-	# 触发事件
-	if QuestEventBus.instance:
-		QuestEventBus.instance.custom_event.emit("healed", {
-			"target": entity,
-			"amount": actual_heal,
-			"source": source
-		})
 	
 	return actual_heal
 
@@ -206,14 +205,6 @@ func die(killer: Node = null) -> void:
 	
 	# 触发死亡信号
 	died.emit(killer)
-	
-	# 触发事件总线
-	if QuestEventBus.instance and killer:
-		# 检查是否是敌人被击杀
-		if entity.has_method("get_enemy_type"):
-			var enemy_type = entity.get_enemy_type()
-			var enemy_level = stats_component.level if stats_component else 1
-			QuestEventBus.instance.enemy_killed.emit(enemy_type, entity.name, enemy_level)
 
 ## 检查是否可以攻击
 func can_attack() -> bool:

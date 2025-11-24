@@ -1,6 +1,7 @@
 ## ItemData测试
 ## 测试物品基础数据类的功能
-extends "res://tests/items/test_framework.gd"
+class_name TestItemData
+extends ItemTestFramework
 
 func _init() -> void:
 	super._init("ItemData测试")

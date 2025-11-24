@@ -1,5 +1,6 @@
 ## StatsData测试
 ## 测试属性数据资源的核心功能
+class_name TestStatsData
 extends TestFramework
 
 var stats_data: StatsData

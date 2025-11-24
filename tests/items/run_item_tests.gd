@@ -8,12 +8,12 @@ func _init() -> void:
 	print("=== 物品系统测试开始 ===")
 
 	# 创建测试实例
-	var test_framework = load("res://tests/items/test_framework.gd").new()
-	var test_item_data = load("res://tests/items/test_item_data.gd").new()
-	var test_item_instance = load("res://tests/items/test_item_instance.gd").new()
-	var test_equipment_data = load("res://tests/items/test_equipment_data.gd").new()
-	var test_consumable_data = load("res://tests/items/test_consumable_data.gd").new()
-	var test_weapon_data = load("res://tests/items/test_weapon_data.gd").new()
+	var test_framework = ItemTestFramework.new()
+	var test_item_data = TestItemData.new()
+	var test_item_instance = TestItemInstance.new()
+	var test_equipment_data = TestEquipmentData.new()
+	var test_consumable_data = TestConsumableData.new()
+	var test_weapon_data = TestWeaponData.new()
 
 	# 运行测试
 	print("\n--- 运行ItemData测试 ---")

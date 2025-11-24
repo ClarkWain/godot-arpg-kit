@@ -5,7 +5,10 @@ extends RefCounted
 
 ## 计算最终伤害（主入口）
 static func calculate_damage(damage_info: DamageInfo) -> float:
-	if not damage_info.source or not damage_info.target:
+	# DOT 伤害,是不需要 source 的,所以这里不能判断 source 为 null 就返回
+	#if not damage_info.source or not damage_info.target:
+		#return 0.0
+	if not damage_info.target:
 		return 0.0
 	
 	# 检查是否闪避
@@ -53,22 +56,22 @@ static func _apply_attribute_modifiers(damage: float, damage_info: DamageInfo) -
 	# 根据伤害类型应用不同的属性加成
 	match damage_info.damage_type:
 		DamageInfo.DamageType.PHYSICAL:
-			var attack = source_stats.get_stat("attack")
+			var attack = source_stats.get_stat(StatModifier.StatType.PHYSICAL_DAMAGE)
 			damage *= (1.0 + attack / 100.0)
 		DamageInfo.DamageType.MAGICAL, DamageInfo.DamageType.FIRE, \
 		DamageInfo.DamageType.ICE, DamageInfo.DamageType.LIGHTNING:
-			var magic_power = source_stats.get_stat("magic_power")
+			var magic_power = source_stats.get_stat(StatModifier.StatType.MAGIC_DAMAGE)
 			damage *= (1.0 + magic_power / 100.0)
 	
 	return damage
 
 ## 应用暴击
-static func _apply_critical_hit(damage: float, damage_info: DamageInfo) -> bool:
+static func _apply_critical_hit(damage: float, damage_info: DamageInfo) -> float:
 	var source_stats = _get_stats_component(damage_info.source)
 	if not source_stats:
 		return damage
 	
-	var crit_rate = source_stats.get_stat("critical_rate") / 100.0
+	var crit_rate = source_stats.get_stat(StatModifier.StatType.CRIT_CHANCE)
 	
 	# 幸运值影响暴击率
 	if source_stats.has_method("get_luck_modified_value"):
@@ -77,7 +80,7 @@ static func _apply_critical_hit(damage: float, damage_info: DamageInfo) -> bool:
 	# 暴击判定
 	if randf() < crit_rate:
 		damage_info.is_critical = true
-		var crit_damage = source_stats.get_stat("critical_damage") / 100.0
+		var crit_damage = source_stats.get_stat(StatModifier.StatType.CRIT_DAMAGE)
 		damage_info.critical_multiplier = crit_damage
 		damage *= crit_damage
 	
@@ -91,7 +94,7 @@ static func _apply_elemental_reaction(damage: float, damage_info: DamageInfo) ->
 	
 	# 检查目标身上的元素状态
 	var target_element = _get_active_element(target_status)
-	if target_element.is_empty():
+	if target_element == StatModifier.ElementType.NONE:
 		return damage
 	
 	# 元素反应表
@@ -117,18 +120,17 @@ static func _apply_elemental_reaction(damage: float, damage_info: DamageInfo) ->
 	return damage
 
 ## 检查元素反应
-static func _check_elemental_reaction(attack_element: DamageInfo.DamageType, target_element: String) -> String:
+static func _check_elemental_reaction(attack_element: DamageInfo.DamageType, target_element: StatModifier.ElementType) -> String:
 	match attack_element:
 		DamageInfo.DamageType.FIRE:
-			if target_element == "ice": return "蒸发"
-			if target_element == "lightning": return "超载"
+			if target_element == StatModifier.ElementType.ICE: return "蒸发"
+			if target_element == StatModifier.ElementType.LIGHTNING: return "超载"
 		DamageInfo.DamageType.ICE:
-			if target_element == "fire": return "融化"
-			if target_element == "lightning": return "超导"
+			if target_element == StatModifier.ElementType.FIRE: return "融化"
+			if target_element == StatModifier.ElementType.LIGHTNING: return "超导"
 		DamageInfo.DamageType.LIGHTNING:
-			if target_element == "water": return "感电"
-			if target_element == "fire": return "超载"
-			if target_element == "ice": return "超导"
+			if target_element == StatModifier.ElementType.FIRE: return "超载"
+			if target_element == StatModifier.ElementType.ICE: return "超导"
 	
 	return ""
 
@@ -138,13 +140,13 @@ static func _apply_defense_reduction(damage: float, damage_info: DamageInfo) -> 
 	if not target_stats:
 		return damage
 	
-	var defense = target_stats.get_stat("defense")
+	var defense = target_stats.get_stat(StatModifier.StatType.ARMOR)
 	
 	# 获取护甲穿透
 	var source_stats = _get_stats_component(damage_info.source)
 	var armor_penetration = 0.0
 	if source_stats:
-		armor_penetration = source_stats.get_stat("armor_penetration") / 100.0
+		armor_penetration = source_stats.get_stat(StatModifier.StatType.PHYSICAL_DAMAGE_REDUCTION)
 	
 	# 应用护甲穿透
 	var effective_defense = defense * (1.0 - armor_penetration)
@@ -185,7 +187,7 @@ static func _check_dodge(damage_info: DamageInfo) -> bool:
 	if not target_stats:
 		return false
 	
-	var dodge_rate = target_stats.get_stat("dodge_rate") / 100.0
+	var dodge_rate = target_stats.get_stat(StatModifier.StatType.DODGE_CHANCE)
 	
 	# 幸运值影响闪避率
 	if target_stats.has_method("get_luck_modified_value"):
@@ -199,13 +201,13 @@ static func _check_block(damage_info: DamageInfo) -> bool:
 	if not target_stats:
 		return false
 	
-	var block_rate = target_stats.get_stat("block_rate") / 100.0
+	var block_rate = target_stats.get_stat(StatModifier.StatType.BLOCK_CHANCE)
 	return randf() < block_rate
 
 ## 获取目标身上的元素状态
-static func _get_active_element(status_manager) -> String:
+static func _get_active_element(status_manager) -> StatModifier.ElementType:
 	if not status_manager or not status_manager.has_method("get_active_element"):
-		return ""
+		return StatModifier.ElementType.NONE
 	return status_manager.get_active_element()
 
 ## 获取 StatsComponent

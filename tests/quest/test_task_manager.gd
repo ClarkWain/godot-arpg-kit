@@ -1,6 +1,6 @@
 ## TaskManager测试
 ## 测试任务管理器的核心功能
-extends TestFramework
+extends QuestTestFramework
 
 var task_manager: TaskManager
 var mock_player: MockObjects.MockPlayer

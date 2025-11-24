@@ -4,22 +4,22 @@ class_name QuestEventData
 extends RefCounted
 
 ## 事件类型
-var type: String = ""
+var type: StringName = &""
 
 ## 目标ID
-var target_id: String = ""
+var target_id: StringName = &""
 
 ## 计数值
 var count: int = 1
 
 ## 状态值
-var state: String = ""
+var state: StringName = &""
 
 ## 自定义数据
 var custom_data: Dictionary = {}
 
 ## 构造函数
-func _init(event_type: String = "", tid: String = "", c: int = 1) -> void:
+func _init(event_type: StringName = &"", tid: StringName = &"", c: int = 1) -> void:
 	type = event_type
 	target_id = tid
 	count = c

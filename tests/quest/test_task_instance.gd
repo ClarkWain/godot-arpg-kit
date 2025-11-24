@@ -1,6 +1,6 @@
 ## TaskInstance测试
 ## 测试任务实例的功能
-extends TestFramework
+extends QuestTestFramework
 
 func _init() -> void:
 	super._init("TaskInstance测试")
@@ -237,21 +237,25 @@ func test_signal_emission() -> void:
 	var task_data = MockObjects.create_test_task_data("test_signals")
 	var instance = TaskInstance.new(task_data)
 	
-	var state_changed_count = 0
-	var progress_updated_count = 0
+	var counters = {"state": 0, "progress": 0}
 	
-	var state_callback = func(_old, _new): state_changed_count += 1
-	var progress_callback = func(_prog): progress_updated_count += 1
+	var state_callback = func(_old, _new):
+		counters.state += 1
+		# print("DEBUG: State changed signal received")
+		
+	var progress_callback = func(_prog):
+		counters.progress += 1
+		# print("DEBUG: Progress updated signal received")
 	
 	instance.state_changed.connect(state_callback)
 	instance.progress_updated.connect(progress_callback)
 	
 	# 改变状态应该触发信号
+	# print("DEBUG: Setting state to AVAILABLE")
 	instance.set_state(TaskState.State.AVAILABLE)
+	# print("DEBUG: State is now: ", instance.state)
 	
-	# 等待信号处理（在命令行模式下可能不工作）
-	await Engine.get_main_loop().process_frame
-	
-	var passed = assert_equal(state_changed_count, 1, "状态改变应该触发信号")
+	# 直接检查，因为信号是同步发射的
+	var passed = assert_equal(counters.state, 1, "状态改变应该触发信号")
 	
 	end_test(passed)

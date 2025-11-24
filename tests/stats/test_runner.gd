@@ -24,10 +24,10 @@ func run_all_tests() -> void:
 	var start_time = Time.get_ticks_msec()
 	
 	# 创建测试套件
-	var stats_data_test = load("res://tests/stats/test_stats_data.gd").new()
-	var stat_modifier_test = load("res://tests/stats/test_stat_modifier.gd").new()
-	var luck_system_test = load("res://tests/stats/test_luck_system.gd").new()
-	var stats_component_test = load("res://tests/stats/test_stats_component.gd").new()
+	var stats_data_test = TestStatsData.new()
+	var stat_modifier_test = TestStatModifier.new()
+	var luck_system_test = TestLuckSystem.new()
+	var stats_component_test = TestStatsComponent.new()
 	
 	test_suites.append(stats_data_test)
 	test_suites.append(stat_modifier_test)

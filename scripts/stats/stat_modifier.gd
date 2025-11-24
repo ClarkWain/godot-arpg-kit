@@ -115,6 +115,17 @@ enum StatType {
 	INVENTORY_SLOTS,    ## 背包格子数量
 }
 
+# 元素类型枚举
+enum ElementType {
+	NONE,		# 无元素
+	FIRE,		# 火焰
+	ICE,		# 冰霜
+	LIGHTNING,	# 闪电
+	POISON,		# 毒素
+	DARK,		# 暗影
+	HOLY,		# 神圣
+}
+
 ## 修正的属性类型
 @export var stat_type: StatType
 

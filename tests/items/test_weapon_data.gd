@@ -1,6 +1,7 @@
 ## WeaponData测试
 ## 测试武器数据功能
-extends "res://tests/items/test_framework.gd"
+class_name TestWeaponData
+extends ItemTestFramework
 
 func _init() -> void:
 	super._init("WeaponData测试")

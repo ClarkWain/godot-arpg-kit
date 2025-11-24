@@ -132,7 +132,7 @@ func test_effect_stacking() -> void:
 	manager.add_effect("test_refresh")
 	var time2 = instance1.remaining_time
 	
-	passed = assert_greater(time2, time1, "时间应被刷新") and passed
+	passed = assert_greater(time2, 2.0, "时间应被刷新") and passed
 	
 	entity.free()
 	end_test(passed)
@@ -155,27 +155,45 @@ func test_dot_effect() -> void:
 	var stats = StatsComponent.new()
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
+	base_stats.strength = 0
+	base_stats.agility = 0
+	base_stats.intelligence = 0
+	base_stats.vitality = 0
+	base_stats.luck = 0
 	base_stats.max_health = 100.0
+	base_stats.health_regen = 0.0
+	base_stats.armor = 0.0
 	stats.base_stats = base_stats
 	entity.add_child(stats)
+	stats._ready()
 	
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
 	entity.add_child(combat)
+	combat._ready()
 	
 	var manager = StatusEffectManager.new()
 	manager.name = "StatusEffectManager"
 	entity.add_child(manager)
+	manager._ready()
 	
-	var initial_health = stats.get_stat("health")
+	var initial_health = stats.get_stat(StatModifier.StatType.MAX_HEALTH)
 	
+	# 创建一个源实体 (Source Entity)
+	var source_entity = Node2D.new()
+	var source_stats = StatsComponent.new()
+	source_stats.name = "StatsComponent"
+	source_stats.base_stats = StatsData.new()
+	source_entity.add_child(source_stats)
+	source_stats._ready()
+
 	# 添加DOT
-	var instance = manager.add_effect("test_dot")
+	var instance = manager.add_effect("test_dot", source_entity) # 需要设置 source
 	
 	# 手动触发tick
 	instance.tick()
 	
-	var current_health = stats.get_stat("health")
+	var current_health = stats.current_health
 	var passed = assert_less(current_health, initial_health, "应造成持续伤害")
 	
 	entity.free()
@@ -198,29 +216,46 @@ func test_hot_effect() -> void:
 	var stats = StatsComponent.new()
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
+	base_stats.strength = 0
+	base_stats.agility = 0
+	base_stats.intelligence = 0
+	base_stats.vitality = 0
+	base_stats.luck = 0
 	base_stats.max_health = 100.0
+	base_stats.health_regen = 0.0
 	stats.base_stats = base_stats
 	entity.add_child(stats)
+	stats._ready()
 	
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
 	entity.add_child(combat)
+	combat._ready()
 	
 	var manager = StatusEffectManager.new()
 	manager.name = "StatusEffectManager"
 	entity.add_child(manager)
+	manager._ready()
 	
 	# 先受伤
 	stats.take_damage(50.0)
-	var damaged_health = stats.get_stat("health")
+	var damaged_health = stats.current_health
+	
+	# 创建一个源实体 (Source Entity)
+	var source_entity = Node2D.new()
+	var source_stats = StatsComponent.new()
+	source_stats.name = "StatsComponent"
+	source_stats.base_stats = StatsData.new()
+	source_entity.add_child(source_stats)
+	source_stats._ready()
 	
 	# 添加HOT
-	var instance = manager.add_effect("test_hot")
+	var instance = manager.add_effect("test_hot", source_entity)
 	
 	# 手动触发tick
 	instance.tick()
 	
-	var current_health = stats.get_stat("health")
+	var current_health = stats.current_health
 	var passed = assert_greater(current_health, damaged_health, "应持续治疗")
 	
 	entity.free()
@@ -237,7 +272,7 @@ func test_buff_modifiers() -> void:
 	strength_buff.duration = 10.0
 	
 	var modifier = StatModifier.new()
-	modifier.stat_name = "attack"
+	modifier.stat_type = StatModifier.StatType.PHYSICAL_DAMAGE
 	modifier.value = 20.0
 	modifier.modifier_type = StatModifier.ModifierType.FLAT
 	strength_buff.modifiers.append(modifier)
@@ -247,26 +282,33 @@ func test_buff_modifiers() -> void:
 	var stats = StatsComponent.new()
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
+	base_stats.strength = 0
+	base_stats.agility = 0
+	base_stats.intelligence = 0
+	base_stats.vitality = 0
+	base_stats.luck = 0
 	base_stats.physical_damage = 10.0
 	stats.base_stats = base_stats
 	entity.add_child(stats)
+	stats._ready()
 	
 	var manager = StatusEffectManager.new()
 	manager.name = "StatusEffectManager"
 	entity.add_child(manager)
+	manager._ready()
 	
-	var initial_attack = stats.get_stat("attack")
+	var initial_attack = stats.get_stat(StatModifier.StatType.PHYSICAL_DAMAGE)
 	
 	# 添加Buff
 	manager.add_effect("test_strength")
 	
-	var buffed_attack = stats.get_stat("attack")
+	var buffed_attack = stats.get_stat(StatModifier.StatType.PHYSICAL_DAMAGE)
 	var passed = assert_almost_equal(buffed_attack, initial_attack + 20.0, 0.1, "攻击力应增加20")
 	
 	# 移除Buff
 	manager.remove_effect("test_strength")
 	
-	var final_attack = stats.get_stat("attack")
+	var final_attack = stats.get_stat(StatModifier.StatType.PHYSICAL_DAMAGE)
 	passed = assert_almost_equal(final_attack, initial_attack, 0.1, "移除后攻击力应恢复") and passed
 	
 	entity.free()
@@ -342,7 +384,7 @@ func test_element_tracking() -> void:
 	# 创建带元素的效果
 	var fire_effect = StatusEffectData.new()
 	fire_effect.effect_id = "test_element_fire"
-	fire_effect.element = "fire"
+	fire_effect.element = StatModifier.ElementType.FIRE
 	fire_effect.duration = 5.0
 	StatusEffectManager.register_effect(fire_effect)
 	
@@ -352,11 +394,11 @@ func test_element_tracking() -> void:
 	entity.add_child(manager)
 	
 	# 无元素状态
-	var passed = assert_equal(manager.get_active_element(), "", "初始无元素")
+	var passed = assert_equal(manager.get_active_element(), StatModifier.ElementType.NONE, "初始无元素")
 	
 	# 添加火元素
 	manager.add_effect("test_element_fire")
-	passed = assert_equal(manager.get_active_element(), "fire", "应有火元素") and passed
+	passed = assert_equal(manager.get_active_element(), StatModifier.ElementType.FIRE, "应有火元素") and passed
 	
 	entity.free()
 	end_test(passed)

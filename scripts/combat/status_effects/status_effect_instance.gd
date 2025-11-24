@@ -18,8 +18,8 @@ var stack_count: int = 1
 ## 剩余时间
 var remaining_time: float = 0.0
 
-## 下次Tick时间
-var next_tick_time: float = 0.0
+## 距离上次Tick的时间
+var _time_since_last_tick: float = 0.0
 
 ## 应用时间
 var apply_time: float = 0.0
@@ -42,7 +42,7 @@ func _init(data: StatusEffectData, tgt: Node = null, src: Node = null) -> void:
 	source = src
 	remaining_time = data.duration
 	apply_time = Time.get_ticks_msec() / 1000.0
-	next_tick_time = apply_time + data.tick_interval
+	_time_since_last_tick = 0.0
 
 ## 更新状态效果（每帧调用）
 func update(delta: float) -> void:
@@ -60,10 +60,10 @@ func update(delta: float) -> void:
 	
 	# 处理Tick效果
 	if effect_data.tick_interval > 0:
-		var current_time = Time.get_ticks_msec() / 1000.0
-		if current_time >= next_tick_time:
+		_time_since_last_tick += delta
+		if _time_since_last_tick >= effect_data.tick_interval:
 			tick()
-			next_tick_time = current_time + effect_data.tick_interval
+			_time_since_last_tick -= effect_data.tick_interval
 
 ## Tick处理
 func tick() -> void:
@@ -77,6 +77,10 @@ func tick() -> void:
 			var damage_info = DamageInfo.new(source, target, damage, effect_data.tick_damage_type)
 			damage_info.metadata["is_dot"] = true
 			damage_info.metadata["effect_id"] = effect_data.effect_id
+			
+			# 计算最终伤害
+			DamageCalculator.calculate_damage(damage_info)
+			
 			target.get_node("CombatComponent").receive_damage(damage_info)
 	
 	# HOT治疗
@@ -85,23 +89,26 @@ func tick() -> void:
 		if target.has_node("CombatComponent"):
 			target.get_node("CombatComponent").heal(heal, source)
 	
-	effect_ticked.emit(self)
+	# 使用统一 emit_signal
+	emit_signal("effect_ticked", self)
 
 ## 增加叠加层数
 func add_stack(count: int = 1) -> void:
 	var old_count = stack_count
-	stack_count = mini(stack_count + count, effect_data.max_stacks)
+	# 使用标准 min() 函数
+	stack_count = min(stack_count + count, effect_data.max_stacks)
 	
 	if stack_count != old_count:
-		stack_changed.emit(old_count, stack_count)
+		emit_signal("stack_changed", old_count, stack_count)
 
 ## 移除叠加层数
 func remove_stack(count: int = 1) -> bool:
 	var old_count = stack_count
-	stack_count = maxi(0, stack_count - count)
+	# 使用标准 max() 函数替换 maxi
+	stack_count = max(0, stack_count - count)
 	
 	if stack_count != old_count:
-		stack_changed.emit(old_count, stack_count)
+		emit_signal("stack_changed", old_count, stack_count)
 	
 	# 如果层数为0，效果失效
 	if stack_count <= 0:
@@ -125,7 +132,7 @@ func expire() -> void:
 		return
 	
 	is_active = false
-	effect_expired.emit(self)
+	emit_signal("effect_expired", self)
 
 ## 获取剩余时间百分比
 func get_remaining_time_percent() -> float:

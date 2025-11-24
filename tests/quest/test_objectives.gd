@@ -1,6 +1,6 @@
 ## Objective测试
 ## 测试各种任务目标类型
-extends TestFramework
+extends QuestTestFramework
 
 func _init() -> void:
 	super._init("Objective测试")
@@ -170,11 +170,10 @@ func test_objective_signals() -> void:
 	var obj = MockObjects.create_count_objective("kill_enemy", "goblin", 5)
 	obj.initialize()
 	
-	var completed_count = 0
-	var progress_count = 0
+	var counters = {"completed": 0, "progress": 0}
 	
-	var completed_callback = func(_o): completed_count += 1
-	var progress_callback = func(_o, _p): progress_count += 1
+	var completed_callback = func(_o): counters.completed += 1
+	var progress_callback = func(_o, _p): counters.progress += 1
 	
 	obj.objective_completed.connect(completed_callback)
 	obj.objective_progress_changed.connect(progress_callback)
@@ -182,18 +181,14 @@ func test_objective_signals() -> void:
 	# 更新进度应该触发进度信号
 	obj.add_count(3)
 	
-	# 等待信号处理（在命令行模式下可能不工作）
-	await Engine.get_main_loop().process_frame
-	
-	var passed = assert_equal(progress_count, 1, "进度更新应该触发信号")
-	passed = assert_equal(completed_count, 0, "未完成不应该触发完成信号") and passed
+	# 直接检查，因为信号是同步发射的
+	var passed = assert_equal(counters.progress, 1, "进度更新应该触发信号")
+	passed = assert_equal(counters.completed, 0, "未完成不应该触发完成信号") and passed
 	
 	# 完成应该触发完成信号
 	obj.add_count(2)
 	
-	await Engine.get_main_loop().process_frame
-	
-	passed = assert_equal(completed_count, 1, "完成应该触发完成信号") and passed
+	passed = assert_equal(counters.completed, 1, "完成应该触发完成信号") and passed
 	
 	end_test(passed)
 

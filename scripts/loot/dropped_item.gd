@@ -1,9 +1,10 @@
 class_name DroppedItem
 extends Area2D
-## 掉落物实体
+## 掉落物实体（俯视角版本）
 ##
 ## 表示场景中的掉落物品，玩家可以拾取
 ## 支持磁吸、自动消失、视觉效果等
+## 适用于2D俯视角游戏
 
 ## 掉落物状态
 enum State {
@@ -42,14 +43,14 @@ var current_state: State = State.SPAWNING
 @export var magnet_speed: float = 200.0
 
 @export_group("Spawn Settings")
-## 生成时的抛出力度
-@export var spawn_force: Vector2 = Vector2(100, -200)
-## 生成时的随机偏移
-@export var spawn_randomness: float = 50.0
-## 重力加速度
-@export var item_gravity: float = 980.0
-## 地面反弹系数
-@export var bounce_damping: float = 0.5
+## 生成时的散开速度
+@export var spawn_speed: float = 150.0
+## 生成时的随机角度范围（度）
+@export var spawn_angle_range: float = 360.0
+## 散开减速度
+@export var scatter_deceleration: float = 300.0
+## 最小散开距离
+@export var min_scatter_distance: float = 20.0
 
 @export_group("Despawn Settings")
 ## 是否自动消失
@@ -71,11 +72,11 @@ var current_state: State = State.SPAWNING
 
 ## ========== 内部变量 ==========
 var _velocity: Vector2 = Vector2.ZERO
-var _is_on_ground: bool = false
 var _spawn_timer: float = 0.0
 var _despawn_timer: float = 0.0
 var _blink_timer: float = 0.0
 var _target_player: Node2D = null
+var _scatter_complete: bool = false
 
 ## 节点引用
 @onready var sprite: Sprite2D = get_node_or_null(sprite_path)
@@ -131,21 +132,21 @@ func setup_gold(amount: int):
 
 ## 处理生成状态
 func _process_spawning(delta: float):
-	# 应用重力
-	_velocity.y += item_gravity * delta
+	# 应用减速
+	var speed = _velocity.length()
+	if speed > 0:
+		var deceleration = scatter_deceleration * delta
+		speed = max(0, speed - deceleration)
+		_velocity = _velocity.normalized() * speed
 	
 	# 更新位置
 	position += _velocity * delta
 	
-	# 简单的地面碰撞检测（可以用 RayCast2D 改进）
-	if position.y >= global_position.y + 10:  # 假设地面在这个位置
-		position.y = global_position.y + 10
-		_velocity.y *= -bounce_damping
-		
-		if abs(_velocity.y) < 50:  # 速度足够小时停止弹跳
-			_velocity.y = 0
-			_is_on_ground = true
-			_change_state(State.IDLE)
+	# 检查是否完成散开
+	if speed <= 0 or _scatter_complete:
+		_velocity = Vector2.ZERO
+		_scatter_complete = true
+		_change_state(State.IDLE)
 	
 	_spawn_timer += delta
 
@@ -283,11 +284,11 @@ func _play_pickup_effect():
 
 ## 生成动画
 func _start_spawn_animation():
-	# 随机抛出方向
-	var random_angle = randf_range(-PI/4, PI/4)
-	var force = spawn_force.rotated(random_angle)
-	force += Vector2(randf_range(-spawn_randomness, spawn_randomness), 0)
-	_velocity = force
+	# 随机散开方向（俯视角，360度任意方向）
+	var random_angle = randf_range(0, deg_to_rad(spawn_angle_range))
+	var direction = Vector2.RIGHT.rotated(random_angle)
+	_velocity = direction * spawn_speed
+	_scatter_complete = false
 
 
 ## ========== 公共方法 ==========

@@ -67,7 +67,7 @@ enum StackType {
 @export var priority: int = 0
 
 ## 元素类型（用于元素反应）
-@export_enum("", "fire", "ice", "lightning", "water", "poison") var element: String = ""
+@export var element: StatModifier.ElementType = StatModifier.ElementType.NONE
 
 ## 应用时触发的效果ID列表
 @export var on_apply_effects: Array[String] = []

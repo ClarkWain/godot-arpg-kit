@@ -11,6 +11,8 @@ enum DamageType {
 	ICE,         # 冰霜伤害
 	LIGHTNING,   # 雷电伤害
 	POISON,      # 毒素伤害
+	DARK,		 # 暗影伤害
+	HOLY,		 # 神圣伤害
 	TRUE         # 真实伤害（无视防御）
 }
 
@@ -105,6 +107,10 @@ func get_damage_type_color() -> Color:
 			return Color.YELLOW
 		DamageType.POISON:
 			return Color.GREEN
+		DamageType.DARK:
+			return Color.DARK_GRAY
+		DamageType.HOLY:
+			return Color.GOLD
 		DamageType.TRUE:
 			return Color.PURPLE
 		_:

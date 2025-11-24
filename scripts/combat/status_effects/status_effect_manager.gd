@@ -3,6 +3,9 @@
 class_name StatusEffectManager
 extends Node
 
+# 预加载 CombatEventBus
+const CombatEventBus = preload("res://scripts/combat/combat_event_bus.gd")
+
 ## 目标实体
 @export var entity: Node = null
 
@@ -207,12 +210,12 @@ func get_all_active_effects() -> Array[StatusEffectInstance]:
 	return all_effects
 
 ## 获取当前元素状态（用于元素反应）
-func get_active_element() -> String:
+func get_active_element() -> StatModifier.ElementType:
 	for effect_id in active_effects.keys():
 		var effect_data = registered_effects.get(effect_id)
-		if effect_data and not effect_data.element.is_empty():
+		if effect_data and effect_data.element != StatModifier.ElementType.NONE:
 			return effect_data.element
-	return ""
+	return StatModifier.ElementType.NONE
 
 ## 添加护盾
 func add_shield(amount: float) -> void:
@@ -220,12 +223,15 @@ func add_shield(amount: float) -> void:
 	shield_amount += amount
 	shield_changed.emit(old_amount, shield_amount)
 
-## 消耗护盾
-func consume_shield(amount: float) -> float:
+## 消耗护盾 
+func consume_shield(amount: float) -> float: 
 	var old_amount = shield_amount
 	var consumed = minf(amount, shield_amount)
 	shield_amount -= consumed
-	shield_changed.emit(old_amount, shield_amount)
+	
+	if old_amount != shield_amount:
+		shield_changed.emit(old_amount, shield_amount)
+
 	return consumed
 
 ## 获取护盾值

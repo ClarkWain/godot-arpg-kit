@@ -2,7 +2,7 @@
 
 ## 概述
 
-Loot 系统是 2D ARPG 游戏的战利品掉落模块，提供了完整的掉落物生成、管理和拾取功能。系统采用组件化设计，支持复杂的掉落规则、多种掉落模式、幸运值影响、磁吸拾取等高级特性。
+Loot 系统是 2D 俯视角 ARPG 游戏的战利品掉落模块，提供了完整的掉落物生成、管理和拾取功能。系统采用组件化设计，支持复杂的掉落规则、多种掉落模式、幸运值影响、磁吸拾取等高级特性。
 
 ## 核心类结构
 
@@ -81,22 +81,28 @@ loot_generator.pool_size = 100
 ```
 
 ### DroppedItem (掉落物实体)
-场景中的掉落物品实体，支持磁吸和视觉效果。
+场景中的掉落物品实体，支持磁吸和视觉效果。适用于2D俯视角游戏。
 
 **主要功能：**
-- 抛出动画和物理效果
+- 360度散开动画（俯视角）
 - 磁吸拾取
 - 自动消失
 - 稀有度视觉效果
 
 **配置选项：**
 ```gdscript
-# 在场景中配置 DroppedItem
+# 在场景中配置 DroppedItem（俯视角版本）
 dropped_item.enable_magnetism = true
 dropped_item.magnet_radius = 150.0
 dropped_item.magnet_speed = 250.0
 dropped_item.auto_despawn = true
 dropped_item.despawn_time = 45.0
+
+# 俯视角散开设置
+dropped_item.spawn_speed = 150.0  # 散开速度
+dropped_item.spawn_angle_range = 360.0  # 散开角度范围
+dropped_item.scatter_deceleration = 300.0  # 减速度
+dropped_item.min_scatter_distance = 20.0  # 最小散开距离
 ```
 
 ### EnemyLootComponent (敌人掉落组件)
@@ -474,18 +480,31 @@ entry.custom_condition = func(level, tags): return "special_event" in tags
 
 ### 掉落动画系统
 ```gdscript
-# 为不同类型的掉落添加特殊动画
+# 为不同类型的掉落添加特殊动画（俯视角版本）
 class AnimatedDroppedItem extends DroppedItem:
-    @export var animation_type: String = "bounce"
-    
-    func _start_spawn_animation():
-        match animation_type:
-            "bounce":
-                _play_bounce_animation()
-            "float":
-                _play_float_animation()
-            "explode":
-                _play_explode_animation()
+	@export var animation_type: String = "scatter"
+	
+	func _start_spawn_animation():
+		match animation_type:
+			"scatter":
+				# 默认散开动画
+				super._start_spawn_animation()
+			"spiral":
+				_play_spiral_animation()
+			"burst":
+				_play_burst_animation()
+			"float":
+				_play_float_animation()
+	
+	func _play_spiral_animation():
+		# 螺旋散开效果
+		var angle = randf() * TAU
+		_velocity = Vector2.RIGHT.rotated(angle) * spawn_speed
+	
+	func _play_burst_animation():
+		# 爆炸式散开（更快的速度）
+		var angle = randf() * TAU
+		_velocity = Vector2.RIGHT.rotated(angle) * spawn_speed * 1.5
 ```
 
 ### 网络同步
@@ -510,3 +529,11 @@ func spawn_loot_on_clients(loot_data: Dictionary, position: Vector2):
 - 自动消失时间不宜过短，以免玩家错过拾取
 - 磁吸范围过大会影响游戏体验
 - 掉落表的测试需要大量样本才能获得准确的统计数据
+
+### 俯视角特定注意事项
+
+- 散开速度和减速度需要根据游戏节奏调整
+- 散开角度范围设为360度可实现全方位散开
+- 最小散开距离避免掉落物重叠在一起
+- 俯视角下不需要重力和地面碰撞检测
+- 掉落物在XY平面上移动，Z轴（深度）通过渲染层次处理

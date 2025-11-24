@@ -1,9 +1,8 @@
-# res://tests/items/test_framework.gd
 ## Items系统测试框架
 ##
 ## 提供items系统测试的基础功能和断言方法
 ## 继承自TestFramework
-
+class_name ItemTestFramework
 extends TestFramework
 
 ## ========== 物品测试辅助方法 ==========

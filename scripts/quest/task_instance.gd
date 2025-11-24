@@ -53,32 +53,10 @@ func _initialize_objectives() -> void:
 	
 	# 创建新的目标实例
 	for obj_data in task_data.objectives:
-		var obj: TaskObjective
+		# 使用多态方法创建实例
+		var obj = obj_data.instantiate()
 		
-		# 根据类型创建新实例（避免 duplicate 的问题）
-		if obj_data is CountObjective:
-			var count_obj = CountObjective.new()
-			count_obj.target_type = obj_data.target_type
-			count_obj.target_id = obj_data.target_id
-			count_obj.required_count = obj_data.required_count
-			obj = count_obj
-		elif obj_data is StateObjective:
-			var state_obj = StateObjective.new()
-			state_obj.state_type = obj_data.state_type
-			state_obj.target_state = obj_data.target_state
-			obj = state_obj
-		else:
-			# 其他类型使用 duplicate
-			obj = obj_data.duplicate(true)
-		
-		# 复制基类属性
-		obj.objective_id = obj_data.objective_id
-		obj.description = obj_data.description
-		obj.optional = obj_data.optional
-		obj.weight = obj_data.weight
-		
-		# 初始化并连接信号
-		obj.initialize()
+		# 连接信号
 		obj.objective_completed.connect(_on_objective_completed)
 		obj.objective_progress_changed.connect(_on_objective_progress_changed)
 		objectives.append(obj)
@@ -98,6 +76,7 @@ func set_state(new_state: TaskState.State) -> void:
 	
 	var old_state = state
 	state = new_state
+	# 使用 emit_signal 保证兼容性
 	state_changed.emit(old_state, new_state)
 	
 	# 状态转换时的特殊处理
@@ -111,7 +90,7 @@ func set_state(new_state: TaskState.State) -> void:
 			last_completion_time = Time.get_unix_time_from_system()
 
 ## 更新目标进度
-func update_objective_progress(event_data: Dictionary) -> void:
+func update_objective_progress(event_data) -> void:
 	if state != TaskState.State.ACTIVE:
 		return
 	
@@ -145,6 +124,7 @@ func get_overall_progress() -> float:
 	return completed_weight / total_weight
 
 ## 获取剩余时间(秒)
+## 返回-1表示无限制，否则返回剩余时间
 func get_remaining_time() -> float:
 	if task_data.time_limit <= 0.0:
 		return -1.0  # 无限制
@@ -161,6 +141,18 @@ func is_expired() -> bool:
 		return false
 	
 	return get_remaining_time() <= 0.0
+
+## 获取该任务关心的所有事件类型
+func get_interested_events() -> Array[String]:
+	var events: Array[String] = []
+	for obj in objectives:
+		if obj.is_completed: continue # 已完成的目标不再关心事件
+		
+		var obj_events = obj.get_interested_events()
+		for evt in obj_events:
+			if not evt in events:
+				events.append(evt)
+	return events
 
 ## 检查冷却是否结束
 func is_cooldown_finished() -> bool:
@@ -203,11 +195,29 @@ func from_dict(data: Dictionary) -> void:
 	
 	# 恢复目标进度
 	var objectives_data = data.get("objectives", [])
-	for i in range(min(objectives.size(), objectives_data.size())):
-		objectives[i].from_dict(objectives_data[i])
+	
+	# 建立 ID 到目标的映射
+	var obj_map = {}
+	for obj in objectives:
+		if not obj.objective_id.is_empty():
+			obj_map[obj.objective_id] = obj
+	
+	# 根据 ID 恢复数据
+	for obj_data in objectives_data:
+		var obj_id = obj_data.get("objective_id", "")
+		if obj_id.is_empty():
+			continue
+			
+		if obj_map.has(obj_id):
+			obj_map[obj_id].from_dict(obj_data)
+		else:
+			# 尝试按顺序回退（兼容旧数据或无ID目标）
+			# 这里简单处理：如果找不到ID，就不恢复，避免错误匹配
+			pass
 
 ## 目标完成回调
 func _on_objective_completed(objective: TaskObjective) -> void:
+	# 转发目标完成信号
 	objective_completed.emit(objective)
 	
 	# 检查是否所有必需目标都完成
@@ -216,4 +226,5 @@ func _on_objective_completed(objective: TaskObjective) -> void:
 
 ## 目标进度变化回调
 func _on_objective_progress_changed(objective: TaskObjective, progress: float) -> void:
+	# 转发总体进度更新
 	progress_updated.emit(get_overall_progress())

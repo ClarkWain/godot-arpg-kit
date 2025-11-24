@@ -3,6 +3,9 @@
 class_name SkillManager
 extends Node
 
+# 预加载 CombatEventBus
+const CombatEventBus = preload("res://scripts/combat/combat_event_bus.gd")
+
 ## 实体引用
 @export var entity: Node = null
 
@@ -158,10 +161,6 @@ func use_skill(slot: int, target: Node = null, target_position: Vector2 = Vector
 	
 	skill_used.emit(skill_data.skill_id)
 	
-	# 触发事件总线
-	if CombatEventBus.instance:
-		CombatEventBus.instance.skill_used.emit(entity, skill_data.skill_id, target)
-	
 	return true
 
 ## 开始施法
@@ -224,35 +223,44 @@ func _execute_skill(skill_data: SkillData, target: Node, target_position: Vector
 
 ## 应用技能到目标
 func _apply_skill_to_target(skill_data: SkillData, target: Node) -> void:
-	if not target:
+	if not target or not target.has_node("CombatComponent"):
 		return
 	
-	# 计算伤害
+	# 1. 计算技能的基础伤害
 	var damage = skill_data.base_damage
-	
-	# 应用属性加成
 	if stats_component:
-		var scaling_stat = "attack"
-		if skill_data.damage_type in [DamageInfo.DamageType.MAGICAL, DamageInfo.DamageType.FIRE, 
+		var scaling_stat = StatModifier.StatType.PHYSICAL_DAMAGE
+		if skill_data.damage_type in [DamageInfo.DamageType.MAGICAL, DamageInfo.DamageType.FIRE,
 									  DamageInfo.DamageType.ICE, DamageInfo.DamageType.LIGHTNING]:
-			scaling_stat = "magic_power"
+			scaling_stat = StatModifier.StatType.MAGIC_DAMAGE
 		
 		var stat_value = stats_component.get_stat(scaling_stat)
 		damage += stat_value * skill_data.damage_scaling
 	
-	# 应用伤害
-	if combat_component and damage > 0:
-		var damage_info = combat_component.attack(target, damage, skill_data.damage_type, skill_data.skill_id)
-		
-		# 应用击退
-		if damage_info and skill_data.knockback_force > 0:
-			damage_info.knockback_force = Vector2(skill_data.knockback_force, 0)
-		
-		# 应用状态效果
-		if damage_info and not skill_data.status_effects.is_empty():
-			for effect_id in skill_data.status_effects:
-				if randf() < skill_data.status_effect_chance:
-					damage_info.status_effects.append(effect_id)
+	# 即使0伤害，也可能需要应用状态效果，所以我们继续
+	
+	# 2. 创建并完整填充 DamageInfo 对象
+	var damage_info = DamageInfo.new(entity, target, damage, skill_data.damage_type)
+	damage_info.skill_id = skill_data.skill_id
+	
+	# 3. 在造成伤害前，添加状态效果
+	if not skill_data.status_effects.is_empty():
+		for effect_id in skill_data.status_effects:
+			if randf() < skill_data.status_effect_chance:
+				damage_info.status_effects.append(effect_id)
+				
+	# 4. 添加击退等其他信息
+	if skill_data.knockback_force > 0:
+		damage_info.knockback_force = Vector2(skill_data.knockback_force, 0)
+		if entity is Node2D and target is Node2D:
+			damage_info.knockback_direction = (target.global_position - entity.global_position).normalized()
+			
+	# 5. 调用伤害计算器（伤害发起者的责任）
+	DamageCalculator.calculate_damage(damage_info)
+	
+	# 6. 直接调用目标的 receive_damage
+	var target_combat_component = target.get_node("CombatComponent")
+	target_combat_component.receive_damage(damage_info)
 
 ## 在位置生成技能效果
 func _spawn_skill_at_position(skill_data: SkillData, position: Vector2) -> void:
@@ -298,7 +306,7 @@ func _spawn_vfx(vfx_scene: PackedScene, target: Node) -> void:
 	get_tree().root.add_child(vfx)
 
 ## 播放音效
-func _play_sfx(sfx: AudioStream) -> void:
+func _play_sfx(_sfx: AudioStream) -> void:
 	# TODO: 使用音效管理器播放
 	pass
 
@@ -309,14 +317,12 @@ func _check_resource_cost(skill_data: SkillData) -> bool:
 	
 	# 检查魔法值
 	if skill_data.mana_cost > 0:
-		var current_mana = stats_component.get_stat("mana")
-		if current_mana < skill_data.mana_cost:
+		if stats_component.current_mana < skill_data.mana_cost:
 			return false
 	
 	# 检查体力值
 	if skill_data.stamina_cost > 0:
-		var current_stamina = stats_component.get_stat("stamina")
-		if current_stamina < skill_data.stamina_cost:
+		if stats_component.current_stamina < skill_data.stamina_cost:
 			return false
 	
 	return true
@@ -328,13 +334,11 @@ func _consume_resources(skill_data: SkillData) -> void:
 	
 	# 消耗魔法值
 	if skill_data.mana_cost > 0:
-		var current_mana = stats_component.get_stat("mana")
-		stats_component.set_stat("mana", current_mana - skill_data.mana_cost)
+		stats_component.consume_mana(skill_data.mana_cost)
 	
 	# 消耗体力值
 	if skill_data.stamina_cost > 0:
-		var current_stamina = stats_component.get_stat("stamina")
-		stats_component.set_stat("stamina", current_stamina - skill_data.stamina_cost)
+		stats_component.consume_stamina(skill_data.stamina_cost)
 
 ## 获取技能实例
 func get_skill_instance(slot: int) -> SkillInstance:

@@ -194,6 +194,9 @@ func test_resource_cost() -> void:
 	var base_stats = StatsData.new()
 	base_stats.max_mana = 100.0
 	stats.base_stats = base_stats
+	stats._ready()
+	stats._mark_dirty()
+	stats._recalculate_all_stats()
 	caster.add_child(stats)
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
@@ -201,19 +204,20 @@ func test_resource_cost() -> void:
 	var manager = SkillManager.new()
 	manager.name = "SkillManager"
 	caster.add_child(manager)
+	manager._ready()
 	
-	var initial_mana = stats.get_stat("mana")
+	var initial_mana = stats.get_stat(StatModifier.StatType.MAX_MANA)
 	
 	# 装备并使用技能
 	manager.equip_skill(0, "test_mana")
 	var result = manager.use_skill(0)
 	
-	var current_mana = stats.get_stat("mana")
+	var current_mana = stats.current_mana
 	var passed = assert_true(result, "应成功使用技能")
 	passed = assert_almost_equal(current_mana, initial_mana - 30.0, 0.1, "应消耗30点魔法") and passed
 	
 	# 魔法不足时不能使用
-	stats.set_stat("mana", 10.0)
+	stats.current_mana = 10.0
 	result = manager.use_skill(0)
 	passed = assert_false(result, "魔法不足时不应能使用") and passed
 	
@@ -271,33 +275,45 @@ func test_skill_range() -> void:
 	caster.position = Vector2(0, 0)
 	var stats = StatsComponent.new()
 	stats.name = "StatsComponent"
+	stats.base_stats = StatsData.new()
 	caster.add_child(stats)
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
 	caster.add_child(combat)
 	var manager = SkillManager.new()
 	manager.name = "SkillManager"
+	manager.entity = caster
 	caster.add_child(manager)
+	stats._ready()
+	combat._ready()
+	manager._ready()
 	
 	# 近距离目标
 	var near_target = Node2D.new()
 	near_target.position = Vector2(50, 0)
 	var near_stats = StatsComponent.new()
 	near_stats.name = "StatsComponent"
+	near_stats.base_stats = StatsData.new()
 	near_target.add_child(near_stats)
 	var near_combat = CombatComponent.new()
 	near_combat.name = "CombatComponent"
 	near_target.add_child(near_combat)
+	near_stats._ready()
+	near_combat._ready()
 	
 	# 远距离目标
 	var far_target = Node2D.new()
 	far_target.position = Vector2(200, 0)
 	var far_stats = StatsComponent.new()
 	far_stats.name = "StatsComponent"
+	far_stats.base_stats = StatsData.new()
 	far_target.add_child(far_stats)
 	var far_combat = CombatComponent.new()
 	far_combat.name = "CombatComponent"
 	far_target.add_child(far_combat)
+	far_stats._ready()
+	far_combat._ready()
+	
 	
 	manager.equip_skill(0, "test_range")
 	

@@ -1,6 +1,6 @@
-## 测试框架基类
+## 任务系统测试框架基类
 ## 提供测试断言和报告功能
-class_name TestFramework
+class_name QuestTestFramework
 extends RefCounted
 
 ## 测试结果

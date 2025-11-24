@@ -1,6 +1,6 @@
 ## Reward测试
 ## 测试任务奖励系统
-extends TestFramework
+extends QuestTestFramework
 
 var mock_player: MockObjects.MockPlayer
 var task_manager: TaskManager

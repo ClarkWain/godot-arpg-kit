@@ -1,6 +1,7 @@
 ## ConsumableData测试
 ## 测试消耗品数据功能
-extends "res://tests/items/test_framework.gd"
+class_name TestConsumableData
+extends ItemTestFramework
 
 func _init() -> void:
 	super._init("ConsumableData测试")

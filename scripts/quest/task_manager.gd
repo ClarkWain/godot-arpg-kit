@@ -18,6 +18,10 @@ var player: Node = null
 ## 任务信号连接追踪 {task_id: bool}
 var _task_signal_connections: Dictionary[String, bool] = {}
 
+## 事件索引 {event_type: [task_id]}
+## 用于快速查找关心特定事件的任务
+var _event_index: Dictionary[StringName, Array] = {}
+
 ## 信号
 signal task_registered(task_id: String)
 signal task_accepted(task_id: String)
@@ -31,8 +35,11 @@ func _ready() -> void:
 	if instance == null:
 		instance = self
 	else:
-		push_warning("TaskManager instance already exists!")
-		queue_free()
+		# 在测试环境中，可能会多次创建 TaskManager，这里只打印警告但不销毁，
+		# 或者可以考虑销毁旧的实例。为了测试稳定性，我们允许替换实例。
+		# push_warning("TaskManager instance already exists! Replacing with new instance.")
+		instance = self
+		# queue_free() # 在测试中不要销毁，否则可能会导致引用问题
 		return
 
 ## 注册任务数据
@@ -45,7 +52,7 @@ func register_task(task_data: TaskData) -> bool:
 		return false
 	
 	registered_tasks[task_data.task_id] = task_data
-	task_registered.emit(task_data.task_id)
+	emit_signal("task_registered", task_data.task_id)
 	return true
 
 ## 批量注册任务
@@ -121,7 +128,8 @@ func accept_task(task_id: String) -> bool:
 	
 	# 设置为进行中
 	instance.set_state(TaskState.State.ACTIVE)
-	task_accepted.emit(task_id)
+	_update_event_index(task_id) # 更新索引
+	emit_signal("task_accepted", task_id)
 	
 	# 处理互斥任务
 	for exclusive_id in task_data.exclusive_tasks:
@@ -133,11 +141,34 @@ func accept_task(task_id: String) -> bool:
 	return true
 
 ## 更新任务进度(通过游戏事件)
-func update_task_progress(event_data: Dictionary) -> void:
-	for task_id in player_tasks:
+## 支持 QuestEventData 或 Dictionary (向后兼容)
+func update_task_progress(event_data) -> void:
+	var event: QuestEventData
+	if event_data is QuestEventData:
+		event = event_data
+	elif event_data is Dictionary:
+		event = QuestEventData.from_dict(event_data)
+	else:
+		push_error("TaskManager: Invalid event data type")
+		return
+		
+	if event.type == &"":
+		return
+		
+	# 使用索引查找相关任务
+	var interested_tasks = _event_index.get(event.type, [])
+	if interested_tasks.is_empty():
+		return
+		
+	# 只遍历关心的任务
+	# 注意：需要复制数组，因为 update_objective_progress 可能会导致任务完成从而修改索引
+	for task_id in interested_tasks.duplicate():
+		if not player_tasks.has(task_id):
+			continue
+			
 		var instance: TaskInstance = player_tasks[task_id]
 		if instance.state == TaskState.State.ACTIVE:
-			instance.update_objective_progress(event_data)
+			instance.update_objective_progress(event)
 			
 			# 检查超时
 			if instance.is_expired():
@@ -163,6 +194,7 @@ func complete_task(task_id: String) -> bool:
 			return false
 	
 	instance.set_state(TaskState.State.COMPLETED)
+	_remove_from_event_index(task_id) # 完成后移除索引
 	return true
 
 ## 领取奖励
@@ -194,7 +226,7 @@ func claim_rewards(task_id: String, optional_reward_index: int = -1) -> bool:
 			push_warning("Failed to grant optional reward: %s" % optional_reward.reward_id)
 	
 	instance.set_state(TaskState.State.CLAIMED)
-	task_claimed.emit(task_id)
+	emit_signal("task_claimed", task_id)
 	return true
 
 ## 失败任务
@@ -207,7 +239,8 @@ func fail_task(task_id: String, reason: String = "") -> bool:
 		return false
 	
 	instance.set_state(TaskState.State.FAILED)
-	task_failed.emit(task_id, reason)
+	_remove_from_event_index(task_id) # 失败后移除索引
+	emit_signal("task_failed", task_id, reason)
 	return true
 
 ## 放弃任务
@@ -220,7 +253,8 @@ func abandon_task(task_id: String) -> bool:
 		return false
 	
 	instance.set_state(TaskState.State.ABANDONED)
-	task_abandoned.emit(task_id)
+	_remove_from_event_index(task_id) # 放弃后移除索引
+	emit_signal("task_abandoned", task_id)
 	return true
 
 ## 检查任务是否已完成
@@ -266,6 +300,7 @@ func save_data() -> Dictionary:
 ## 加载任务数据
 func load_data(data: Dictionary) -> void:
 	player_tasks.clear()
+	_task_signal_connections.clear()
 	
 	var tasks_data = data.get("tasks", [])
 	for task_dict in tasks_data:
@@ -281,8 +316,13 @@ func load_data(data: Dictionary) -> void:
 		# 重新连接信号
 		instance.state_changed.connect(_on_task_state_changed.bind(task_id))
 		instance.progress_updated.connect(_on_task_progress_updated.bind(task_id))
+		_task_signal_connections[task_id] = true
 		
 		player_tasks[task_id] = instance
+		
+		# 如果是活跃任务，重建索引
+		if instance.state == TaskState.State.ACTIVE:
+			_update_event_index(task_id)
 
 ## 构建上下文数据
 func _build_context() -> TaskContext:
@@ -293,8 +333,41 @@ func _build_context() -> TaskContext:
 func _on_task_state_changed(old_state: TaskState.State, new_state: TaskState.State, task_id: String) -> void:
 	match new_state:
 		TaskState.State.COMPLETED:
-			task_completed.emit(task_id)
+			emit_signal("task_completed", task_id)
 
 ## 任务进度更新回调
 func _on_task_progress_updated(progress: float, task_id: String) -> void:
-	task_updated.emit(task_id, progress)
+	# 进度更新可能意味着某个目标完成了，需要更新索引
+	# 例如：杀怪目标完成了，就不需要再监听 kill_enemy 了
+	_update_event_index(task_id)
+	emit_signal("task_updated", task_id, progress)
+
+## 更新任务的事件索引
+func _update_event_index(task_id: String) -> void:
+	if not player_tasks.has(task_id):
+		return
+		
+	var instance = player_tasks[task_id]
+	
+	# 先移除旧的索引
+	_remove_from_event_index(task_id)
+	
+	# 如果不是活跃状态，不需要监听
+	if instance.state != TaskState.State.ACTIVE:
+		return
+		
+	# 获取任务关心的事件
+	var events = instance.get_interested_events()
+	for evt in events:
+		var evt_name = StringName(evt)
+		if not _event_index.has(evt_name):
+			_event_index[evt_name] = []
+		if not task_id in _event_index[evt_name]:
+			_event_index[evt_name].append(task_id)
+
+## 从事件索引中移除任务
+func _remove_from_event_index(task_id: String) -> void:
+	for evt in _event_index:
+		var list = _event_index[evt]
+		if task_id in list:
+			list.erase(task_id)

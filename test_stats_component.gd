@@ -47,7 +47,7 @@ func _ready():
 	print("  保存数据键: ", save_data.keys())
 	
 	print("\n5. 测试伤害计算")
-	var damage_result = stats.calculate_damage(0.0, "physical", "", true)
+	var damage_result = stats.calculate_damage(0.0, "physical", StatModifier.ElementType.NONE, true)
 	print("  基础伤害: ", damage_result.base_damage)
 	print("  是否暴击: ", damage_result.was_crit)
 	

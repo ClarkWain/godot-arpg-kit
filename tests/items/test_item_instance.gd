@@ -1,6 +1,7 @@
 ## ItemInstance测试
 ## 测试物品实例的功能
-extends "res://tests/items/test_framework.gd"
+class_name TestItemInstance
+extends ItemTestFramework
 
 func _init() -> void:
 	super._init("ItemInstance测试")

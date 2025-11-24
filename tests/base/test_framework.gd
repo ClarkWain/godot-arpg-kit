@@ -243,3 +243,15 @@ func get_test_summary() -> String:
 		return "未运行测试"
 	var pass_rate = float(passed_tests) / total_tests * 100.0
 	return "通过 %d/%d (%.1f%%)" % [passed_tests, total_tests, pass_rate]
+
+## 辅助方法：创建并初始化 StatsComponent
+func create_stats_component(parent: Node, base_stats_config: StatsData = null) -> Node:
+	var stats = StatsComponent.new()
+	stats.name = "StatsComponent"
+	if base_stats_config:
+		stats.base_stats = base_stats_config
+	else:
+		stats.base_stats = StatsData.new()
+	parent.add_child(stats)
+	stats._ready()  # 手动初始化
+	return stats

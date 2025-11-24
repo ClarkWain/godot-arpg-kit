@@ -70,6 +70,7 @@ func run_all_tests() -> void:
 	test_gold_generation()
 	test_loot_generation()
 	test_weighted_selection()
+	test_tag_filtering()
 
 	print_report()
 
@@ -196,5 +197,47 @@ func test_weighted_selection() -> void:
 
 	# 由于权重差异，普通物品应该更常掉落
 	var passed = assert_greater(common_count, rare_count, "普通物品应该比稀有物品掉落更频繁")
+
+	end_test(passed)
+
+## 测试: 标签过滤
+func test_tag_filtering() -> void:
+	start_test("标签过滤")
+
+	var normal_item = create_test_item("普通物品", ItemData.ItemType.MATERIAL, ItemData.Rarity.COMMON, 10)
+	var boss_item = create_test_item("Boss物品", ItemData.ItemType.MATERIAL, ItemData.Rarity.RARE, 100)
+
+	var normal_entry = create_test_loot_entry(normal_item, 1.0, 1, 100)
+	var boss_entry = create_test_loot_entry(boss_item, 1.0, 1, 100)
+	boss_entry.required_tags = ["boss"] as Array[String]  # Boss物品需要boss标签
+
+	var table = create_test_loot_table([normal_entry, boss_entry], LootTable.DropMode.ALL)
+	table.drops_gold = false
+
+	# 测试无标签：应该只掉落普通物品
+	var loot_no_tags = table.generate_loot(1, 0, [])
+	var passed = assert_loot_result_valid(loot_no_tags, "无标签应该返回有效掉落结果")
+	passed = assert_equal(loot_no_tags.items.size(), 1, "无标签应该只掉落1个物品") and passed
+	if loot_no_tags.items.size() > 0:
+		passed = assert_equal(loot_no_tags.items[0].item_data, normal_item, "无标签应该掉落普通物品") and passed
+
+	# 测试有boss标签：应该掉落两个物品
+	var loot_with_boss = table.generate_loot(1, 0, ["boss"])
+	passed = assert_loot_result_valid(loot_with_boss, "有boss标签应该返回有效掉落结果") and passed
+	passed = assert_equal(loot_with_boss.items.size(), 2, "有boss标签应该掉落2个物品") and passed
+	if loot_with_boss.items.size() == 2:
+		var item_names = []
+		for item in loot_with_boss.items:
+			item_names.append(item.item_data.item_name)
+		passed = assert_true("普通物品" in item_names, "应该包含普通物品") and passed
+		passed = assert_true("Boss物品" in item_names, "应该包含Boss物品") and passed
+
+	# 测试排除标签：Boss物品有excluded_tags
+	boss_entry.excluded_tags = ["no_boss"] as Array[String]
+	var loot_excluded = table.generate_loot(1, 0, ["no_boss"])
+	passed = assert_loot_result_valid(loot_excluded, "有排除标签应该返回有效掉落结果") and passed
+	passed = assert_equal(loot_excluded.items.size(), 1, "有排除标签应该只掉落1个物品") and passed
+	if loot_excluded.items.size() > 0:
+		passed = assert_equal(loot_excluded.items[0].item_data, normal_item, "排除标签应该只掉落普通物品") and passed
 
 	end_test(passed)

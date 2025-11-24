@@ -1,5 +1,6 @@
 ## StatModifier测试
 ## 测试属性修正器的核心功能
+class_name TestStatModifier
 extends TestFramework
 
 var stat_modifier: StatModifier

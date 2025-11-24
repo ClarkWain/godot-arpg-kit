@@ -1,5 +1,6 @@
 ## StatsComponent测试
 ## 测试属性组件的核心功能
+class_name TestStatsComponent
 extends TestFramework
 
 var stats_component: StatsComponent
@@ -45,6 +46,7 @@ func run_all_tests() -> void:
 	test_experience_system()
 	test_stat_point_allocation()
 	test_serialization()
+	test_elemental_system()
 	
 	print_report()
 
@@ -250,6 +252,140 @@ func test_serialization() -> void:
 	passed = assert_equal(strength, 13, "修正器应该正确恢复") and passed
 	
 	new_component.queue_free()
+	
+	end_test(passed)
+	teardown()
+
+## 测试: 元素系统
+func test_elemental_system() -> void:
+	setup()
+	stats_component._ready()
+	start_test("元素系统")
+	
+	# 重置所有元素相关属性
+	mock_base_stats.fire_damage = 0.0
+	mock_base_stats.res_fire = 0.0
+	mock_base_stats.res_all = 0.0
+	mock_base_stats.crit_chance = 0.0
+	mock_base_stats.crit_damage = 1.5  # 默认暴击伤害
+	mock_base_stats.vitality = 0  # 重置体质，避免护甲派生加成
+	stats_component._mark_dirty()
+	
+	# 测试1: 元素伤害计算正确性
+	# 设置火元素伤害为50
+	mock_base_stats.fire_damage = 50.0
+	stats_component._mark_dirty()  # 强制重新计算属性
+	var damage_calc = stats_component.calculate_damage(100.0, "physical", StatModifier.ElementType.FIRE)
+	var passed = assert_equal(damage_calc.elemental_damage, 50.0, "火元素伤害应该是50")
+	passed = assert_equal(damage_calc.base_damage, 100.0, "基础伤害应该是100") and passed
+	passed = assert_equal(damage_calc.total_damage, 150.0, "总伤害应该是基础伤害+元素伤害=150") and passed
+	
+	# 测试2: 元素抗性减伤效果
+	# 重置生命值并设置火抗20%
+	stats_component.current_health = 200.0
+	mock_base_stats.res_fire = 20.0
+	stats_component._mark_dirty()
+	var damage_result = stats_component.take_damage(100.0, "physical", StatModifier.ElementType.FIRE)
+	# 伤害流程: 100点伤害 -> 元素抗性20% -> 护甲减伤
+	# 元素抗性: 100 * (1.0 - 20/100.0) = 80
+	# 护甲减伤: 80 * (1.0 - 10/(10+100)) = 80 * (1.0 - 0.0909) ≈ 80 * 0.9091 ≈ 72.73
+	var expected_damage = 100.0 * (1.0 - 20.0/100.0)  # 先元素抗性: 80
+	expected_damage *= (1.0 - 10.0 / (10.0 + 100.0))  # 再护甲减伤: 80 * 0.9091 ≈ 72.73
+	passed = assert_almost_equal(damage_result.final_damage, expected_damage, 0.01, "火元素伤害应该被20%抗性减免，最终伤害约72.73") and passed
+	
+	# 测试3: 全抗性叠加
+	# 重置生命值
+	stats_component.current_health = 200.0
+	mock_base_stats.res_all = 10.0  # 全抗10%
+	stats_component._mark_dirty()
+	damage_result = stats_component.take_damage(100.0, "physical", StatModifier.ElementType.FIRE)
+	# 总抗性 = 火抗20% + 全抗10% = 30%
+	expected_damage = 100.0 * (1.0 - 30.0/100.0)  # 先元素抗性: 70
+	expected_damage *= (1.0 - 10.0 / (10.0 + 100.0))  # 再护甲减伤: 70 * 0.9091 ≈ 63.64
+	passed = assert_almost_equal(damage_result.final_damage, expected_damage, 0.01, "全抗性应该与元素抗性叠加，最终伤害约63.64") and passed
+	
+	# 测试4: 100%抗性完全免疫
+	stats_component.current_health = 200.0
+	mock_base_stats.res_fire = 100.0  # 100%火抗
+	stats_component._mark_dirty()
+	damage_result = stats_component.take_damage(100.0, "physical", StatModifier.ElementType.FIRE)
+	passed = assert_equal(damage_result.final_damage, 0.0, "100%元素抗性应该完全免疫该元素伤害") and passed
+	
+	# 测试5: 负抗性增加伤害
+	stats_component.current_health = 200.0
+	mock_base_stats.res_fire = -20.0  # -20%火抗(脆弱)
+	mock_base_stats.res_all = 0.0     # 重置全抗
+	stats_component._mark_dirty()
+	damage_result = stats_component.take_damage(100.0, "physical", StatModifier.ElementType.FIRE)
+	# 总抗性 = 火抗-20% + 全抗0% = -20%
+	# 伤害: 100 * (1.0 - (-20)/100) = 120, 然后护甲减伤
+	expected_damage = 120.0 * (1.0 - 10.0 / (10.0 + 100.0))  # 120 * 0.9091 ≈ 109.09
+	passed = assert_almost_equal(damage_result.final_damage, expected_damage, 0.01, "负抗性应该增加伤害，最终伤害约109.09") and passed
+	
+	# 测试6: 无元素伤害
+	stats_component.current_health = 200.0
+	damage_calc = stats_component.calculate_damage(100.0, "physical", StatModifier.ElementType.NONE)
+	passed = assert_equal(damage_calc.elemental_damage, 0.0, "无元素类型应该没有元素伤害") and passed
+	
+	# 测试7: 元素伤害修正器
+	stats_component.current_health = 200.0
+	var fire_damage_mod = StatModifier.create_flat(StatModifier.StatType.FIRE_DAMAGE, 25.0, "fire_weapon")
+	stats_component.add_modifier(fire_damage_mod)
+	damage_calc = stats_component.calculate_damage(100.0, "physical", StatModifier.ElementType.FIRE)
+	passed = assert_equal(damage_calc.elemental_damage, 75.0, "火元素伤害修正器应该生效: 50+25=75") and passed
+	
+	# 测试8: 元素抗性修正器
+	stats_component.current_health = 200.0
+	# 清除之前的修正器
+	stats_component.remove_modifiers_by_source("fire_weapon")
+	stats_component.remove_modifiers_by_source("fire_resist_potion")
+	mock_base_stats.res_all = 10.0  # 重新设置全抗10%
+	var fire_res_mod = StatModifier.create_flat(StatModifier.StatType.RES_FIRE, 15.0, "fire_resist_potion")
+	stats_component.add_modifier(fire_res_mod)
+	passed = assert_almost_equal(damage_result.final_damage, expected_damage, 0.01, "元素抗性修正器应该叠加，最终伤害约86.36") and passed
+	
+	# 清理修正器
+	stats_component.remove_modifier(fire_res_mod)
+	
+	# 测试9: 元素伤害与暴击交互
+	stats_component.current_health = 200.0
+	# 清除之前的修正器
+	stats_component.remove_modifiers_by_source("fire_weapon")
+	stats_component.remove_modifiers_by_source("fire_resist_potion")
+	mock_base_stats.crit_chance = 1.0  # 100%暴击率
+	mock_base_stats.crit_damage = 2.0  # 200%暴击伤害
+	mock_base_stats.fire_damage = 50.0  # 火伤害50
+	mock_base_stats.strength = 0  # 重置力量，避免派生加成
+	stats_component._mark_dirty()
+	damage_calc = stats_component.calculate_damage(100.0, "physical", StatModifier.ElementType.FIRE, true)
+	# 基础伤害100 + 元素伤害50 = 150, 暴击后 150 * 2.0 = 300
+	passed = assert_equal(damage_calc.was_crit, true, "应该触发暴击") and passed
+	passed = assert_equal(damage_calc.total_damage, 300.0, "暴击应该影响元素伤害: (100+50)*2=300") and passed
+	
+	# 测试10: 不同元素类型的独立性
+	stats_component.current_health = 200.0
+	# 清除之前的修正器
+	stats_component.remove_modifiers_by_source("fire_weapon")
+	stats_component.remove_modifiers_by_source("fire_resist_potion")
+	mock_base_stats.res_ice = 50.0  # 冰抗50%
+	mock_base_stats.ice_damage = 30.0  # 冰伤害30
+	mock_base_stats.res_fire = -20.0  # 火抗-20%
+	mock_base_stats.res_all = 10.0    # 全抗10%
+	stats_component._mark_dirty()
+	
+	# 火伤害应该不受冰抗影响 (火抗 = -20% + 10% = -10%)
+	damage_result = stats_component.take_damage(100.0, "physical", StatModifier.ElementType.FIRE)
+	expected_damage = 100.0 * (1.0 - (-10.0)/100.0) * (1.0 - 10.0 / (10.0 + 100.0))  # 110 * 0.9091 ≈ 100.0
+	passed = assert_almost_equal(damage_result.final_damage, expected_damage, 0.01, "不同元素抗性应该独立计算") and passed
+	
+	# 冰伤害应该使用冰抗 (冰抗 = 50% + 10% = 60%)
+	damage_result = stats_component.take_damage(100.0, "physical", StatModifier.ElementType.ICE)
+	expected_damage = 100.0 * (1.0 - 60.0/100.0) * (1.0 - 10.0 / (10.0 + 100.0))  # 40 * 0.9091 ≈ 36.36
+	passed = assert_almost_equal(damage_result.final_damage, expected_damage, 0.01, "冰元素伤害应该使用冰抗") and passed
+	
+	# 清理修正器
+	stats_component.remove_modifier(fire_damage_mod)
+	stats_component.remove_modifier(fire_res_mod)
 	
 	end_test(passed)
 	teardown()

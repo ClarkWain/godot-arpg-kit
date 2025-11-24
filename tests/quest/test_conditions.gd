@@ -1,6 +1,6 @@
 ## Condition测试
 ## 测试任务条件系统
-extends TestFramework
+extends QuestTestFramework
 
 var mock_player: MockObjects.MockPlayer
 var task_manager: TaskManager

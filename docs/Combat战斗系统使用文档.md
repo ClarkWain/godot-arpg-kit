@@ -123,7 +123,7 @@ poison_effect.duration = 10.0
 poison_effect.tick_interval = 1.0
 poison_effect.tick_value = 5.0  # 每秒5点伤害
 poison_effect.tick_damage_type = DamageInfo.DamageType.POISON
-poison_effect.element = "poison"
+poison_effect.element = StatModifier.ElementType.POISON
 
 # 注册效果
 StatusEffectManager.register_effect(poison_effect)
@@ -191,7 +191,7 @@ $StatusEffectManager.add_effect("strength_blessing")
 # 先对敌人施加冰冻效果
 var ice_effect = StatusEffectData.new()
 ice_effect.effect_id = "frozen"
-ice_effect.element = "ice"
+ice_effect.element = StatModifier.ElementType.ICE
 ice_effect.duration = 5.0
 StatusEffectManager.register_effect(ice_effect)
 enemy.get_node("StatusEffectManager").add_effect("frozen")

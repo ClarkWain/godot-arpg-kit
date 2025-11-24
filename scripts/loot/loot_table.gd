@@ -126,6 +126,12 @@ func _generate_all_drops(player_level: int, luck_value: int, tags: Array[String]
 
 ## 从表中随机选择一个
 func _pick_one_drop(player_level: int, luck_value: int, tags: Array[String]) -> ItemInstance:
+	# 铁剑：权重 50
+	# 木盾：权重 30
+	# 钻石：权重 5
+	# 0────────50─────────80──85
+	# │  铁剑   │  木盾   │钻石│
+	# 随机数落在不同区间决定掉落物品
 	var valid_entries = _get_valid_entries(player_level, tags)
 	if valid_entries.is_empty():
 		return null
@@ -198,6 +204,10 @@ func _weighted_random_drops(player_level: int, luck_value: int, tags: Array[Stri
 	for entry in valid_entries:
 		# 每个条目独立进行加权概率检定
 		var adjusted_chance = entry.get_final_drop_chance(luck_value)
+		# 这里的 weight 不是经典加权随机里的"占比权重"，而是重要性系数
+		# weight = 100（标准）→ 概率不变
+		# weight > 100（重要）→ 概率提升
+		# weight < 100（次要）→ 概率降低
 		var weighted_chance = adjusted_chance * (entry.weight / 100.0)
 		
 		if randf() < weighted_chance:
@@ -229,7 +239,8 @@ func _generate_gold(luck_value: int) -> int:
 	if luck_affects_gold and luck_value > 0:
 		gold = int(LuckSystem.apply_luck_to_value(gold, luck_value, 0.01))
 	
-	return gold
+	# 这里的做法是不允许运气突破上限
+	return clampi(gold, min_gold, max_gold)
 
 
 ## 获取有效的掉落条目

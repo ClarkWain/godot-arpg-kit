@@ -1,6 +1,7 @@
 ## EquipmentData测试
 ## 测试装备数据功能
-extends "res://tests/items/test_framework.gd"
+class_name TestEquipmentData
+extends ItemTestFramework
 
 func _init() -> void:
 	super._init("EquipmentData测试")

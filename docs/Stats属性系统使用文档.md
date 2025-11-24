@@ -127,7 +127,7 @@ stats_component.remove_modifiers_by_tag("consumable")
 var damage_calc = attacker.calculate_damage(
     50.0,                    # 基础伤害
     "physical",              # 伤害类型
-    "fire",                  # 元素类型
+    StatModifier.ElementType.FIRE,  # 元素类型
     true,                    # 可以暴击
     0.0,                     # 额外暴击率
     1.0                      # 伤害倍率
@@ -144,7 +144,7 @@ var battle_result = attacker.deal_damage_to(
     target_stats,           # 目标 StatsComponent
     50.0,                   # 基础伤害
     "physical",             # 伤害类型
-    "fire",                 # 元素类型
+    StatModifier.ElementType.FIRE,  # 元素类型
     true,                   # 可以暴击
     true,                   # 可以闪避
     false                   # 是否格挡

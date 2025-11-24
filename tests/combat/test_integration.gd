@@ -32,9 +32,14 @@ func test_complete_combat_flow() -> void:
 	player_base.physical_damage = 20.0
 	player_stats.base_stats = player_base
 	player.add_child(player_stats)
+
 	var player_combat = CombatComponent.new()
 	player_combat.name = "CombatComponent"
 	player.add_child(player_combat)
+	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	player_stats._ready()
+	player_combat._ready()
 	
 	# 创建敌人
 	var enemy = Node2D.new()
@@ -43,13 +48,20 @@ func test_complete_combat_flow() -> void:
 	enemy_stats.name = "StatsComponent"
 	var enemy_base = StatsData.new()
 	enemy_base.max_health = 50.0
+	enemy_base.armor = 0.0
+	enemy_base.health_regen = 0.0
 	enemy_stats.base_stats = enemy_base
 	enemy.add_child(enemy_stats)
+
 	var enemy_combat = CombatComponent.new()
 	enemy_combat.name = "CombatComponent"
 	enemy.add_child(enemy_combat)
 	
-	var initial_enemy_health = enemy_stats.get_stat("health")
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	enemy_stats._ready()
+	enemy_combat._ready()
+	
+	var initial_enemy_health = enemy_stats.get_stat(StatModifier.StatType.MAX_HEALTH)
 	
 	# 玩家攻击敌人
 	var damage_info = player_combat.attack(enemy, 30.0)
@@ -57,7 +69,7 @@ func test_complete_combat_flow() -> void:
 	var passed = assert_not_null(damage_info, "应返回伤害信息")
 	passed = assert_greater(damage_info.final_damage, 0.0, "应造成伤害") and passed
 	
-	var current_enemy_health = enemy_stats.get_stat("health")
+	var current_enemy_health = enemy_stats.current_health
 	passed = assert_less(current_enemy_health, initial_enemy_health, "敌人生命值应减少") and passed
 	
 	# 连续攻击直到击杀
@@ -96,29 +108,46 @@ func test_skill_with_status_effects() -> void:
 	
 	# 创建施法者和目标
 	var caster = Node2D.new()
+	
 	var caster_stats = StatsComponent.new()
 	caster_stats.name = "StatsComponent"
+	caster_stats.base_stats = StatsData.new() # 初始化 base_stats
 	caster.add_child(caster_stats)
+	
 	var caster_combat = CombatComponent.new()
 	caster_combat.name = "CombatComponent"
 	caster.add_child(caster_combat)
+
 	var caster_skills = SkillManager.new()
 	caster_skills.name = "SkillManager"
 	caster.add_child(caster_skills)
+	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	caster_stats._ready()
+	caster_skills._ready()
+	caster_combat._ready()
 	
 	var target = Node2D.new()
 	var target_stats = StatsComponent.new()
 	target_stats.name = "StatsComponent"
 	var target_base = StatsData.new()
 	target_base.max_health = 100.0
+	target_base.armor = 0.0
 	target_stats.base_stats = target_base
 	target.add_child(target_stats)
+	
 	var target_combat = CombatComponent.new()
 	target_combat.name = "CombatComponent"
 	target.add_child(target_combat)
+	
 	var target_status = StatusEffectManager.new()
 	target_status.name = "StatusEffectManager"
 	target.add_child(target_status)
+	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	target_stats._ready()
+	target_combat._ready()
+	target_status._ready()
 	
 	# 使用技能
 	caster_skills.equip_skill(0, "test_poison_skill")
@@ -137,7 +166,7 @@ func test_elemental_combo() -> void:
 	# 注册冰冻效果
 	var ice = StatusEffectData.new()
 	ice.effect_id = "test_combo_ice"
-	ice.element = "ice"
+	ice.element = StatModifier.ElementType.ICE
 	ice.duration = 5.0
 	StatusEffectManager.register_effect(ice)
 	
@@ -145,24 +174,41 @@ func test_elemental_combo() -> void:
 	var attacker = Node2D.new()
 	var attacker_stats = StatsComponent.new()
 	attacker_stats.name = "StatsComponent"
+	var attacker_base_stats = StatsData.new()
+	attacker_base_stats.dodge_chance = 0
+	attacker_stats.base_stats = attacker_base_stats
 	attacker.add_child(attacker_stats)
+	
 	var attacker_combat = CombatComponent.new()
 	attacker_combat.name = "CombatComponent"
 	attacker.add_child(attacker_combat)
 	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	attacker_stats._ready()
+	attacker_combat._ready()
+	
 	var target = Node2D.new()
+	
 	var target_stats = StatsComponent.new()
 	target_stats.name = "StatsComponent"
 	var target_base = StatsData.new()
 	target_base.max_health = 100.0
+	target_base.armor = 0.0
 	target_stats.base_stats = target_base
 	target.add_child(target_stats)
+	
 	var target_combat = CombatComponent.new()
 	target_combat.name = "CombatComponent"
 	target.add_child(target_combat)
+	
 	var target_status = StatusEffectManager.new()
 	target_status.name = "StatusEffectManager"
 	target.add_child(target_status)
+	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	target_combat._ready()
+	target_stats._ready()
+	target_status._ready()
 	
 	# 先施加冰冻
 	target_status.add_effect("test_combo_ice")
@@ -186,38 +232,55 @@ func test_buff_affects_damage() -> void:
 	buff.effect_id = "test_attack_buff"
 	buff.effect_type = StatusEffectData.EffectType.BUFF
 	buff.duration = 10.0
+	
 	var mod = StatModifier.new()
-	mod.stat_name = "attack"
+	mod.stat_type = StatModifier.StatType.PHYSICAL_DAMAGE
 	mod.value = 50.0
 	mod.modifier_type = StatModifier.ModifierType.FLAT
 	buff.modifiers.append(mod)
 	StatusEffectManager.register_effect(buff)
 	
-	# 创建实体
+	# 创建攻击实体
 	var attacker = Node2D.new()
 	var attacker_stats = StatsComponent.new()
 	attacker_stats.name = "StatsComponent"
 	var attacker_base = StatsData.new()
 	attacker_base.physical_damage = 10.0
+	attacker_base.crit_chance = 0.0
 	attacker_stats.base_stats = attacker_base
 	attacker.add_child(attacker_stats)
+
 	var attacker_combat = CombatComponent.new()
 	attacker_combat.name = "CombatComponent"
 	attacker.add_child(attacker_combat)
+
 	var attacker_status = StatusEffectManager.new()
 	attacker_status.name = "StatusEffectManager"
 	attacker.add_child(attacker_status)
 	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	attacker_combat._ready()
+	attacker_stats._ready()
+	attacker_status._ready()
+	
+	# 创建受击实体
 	var target = Node2D.new()
 	var target_stats = StatsComponent.new()
 	target_stats.name = "StatsComponent"
 	var target_base = StatsData.new()
 	target_base.max_health = 1000.0
+	target_base.armor = 0.0
+	target_base.dodge_chance = 0.0
 	target_stats.base_stats = target_base
 	target.add_child(target_stats)
+	
 	var target_combat = CombatComponent.new()
 	target_combat.name = "CombatComponent"
 	target.add_child(target_combat)
+	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	target_combat._ready()
+	target_stats._ready()
 	
 	# 无Buff时的伤害
 	var damage1 = attacker_combat.attack(target, 100.0)
@@ -256,14 +319,24 @@ func test_dot_kills_enemy() -> void:
 	target_stats.name = "StatsComponent"
 	var target_base = StatsData.new()
 	target_base.max_health = 50.0
+	target_base.armor = 0.0
+	target_base.health_regen = 0.0
+	target_base.dodge_chance = 0.0
 	target_stats.base_stats = target_base
 	target.add_child(target_stats)
+	
 	var target_combat = CombatComponent.new()
 	target_combat.name = "CombatComponent"
 	target.add_child(target_combat)
+	
 	var target_status = StatusEffectManager.new()
 	target_status.name = "StatusEffectManager"
 	target.add_child(target_status)
+	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	target_combat._ready()
+	target_stats._ready()
+	target_status._ready()
 	
 	# 施加DOT
 	var instance = target_status.add_effect("test_deadly_poison")
@@ -291,16 +364,25 @@ func test_shield_blocks_damage() -> void:
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
 	base_stats.max_health = 100.0
+	base_stats.armor = 0.0
+	base_stats.crit_chance = 0.0
 	stats.base_stats = base_stats
 	entity.add_child(stats)
+
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
 	entity.add_child(combat)
+	
 	var status = StatusEffectManager.new()
 	status.name = "StatusEffectManager"
 	entity.add_child(status)
 	
-	var initial_health = stats.get_stat("health")
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	combat._ready()
+	stats._ready()
+	status._ready()
+	
+	var initial_health = stats.get_stat(StatModifier.StatType.MAX_HEALTH)
 	
 	# 添加护盾
 	status.add_shield(50.0)
@@ -310,7 +392,7 @@ func test_shield_blocks_damage() -> void:
 	damage_info.final_damage = 30.0
 	combat.receive_damage(damage_info)
 	
-	var current_health = stats.get_stat("health")
+	var current_health = stats.current_health
 	var passed = assert_equal(current_health, initial_health, "护盾应完全抵挡伤害")
 	passed = assert_almost_equal(status.get_shield_amount(), 20.0, 0.1, "护盾应剩余20") and passed
 	
@@ -327,11 +409,17 @@ func test_equipment_integration() -> void:
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
 	base_stats.physical_damage = 10.0
+	base_stats.crit_chance = 0.0
 	stats.base_stats = base_stats
 	player.add_child(stats)
+
 	var combat = CombatComponent.new()
 	combat.name = "CombatComponent"
 	player.add_child(combat)
+	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	stats._ready()
+	combat._ready()
 	
 	# 创建目标
 	var target = Node2D.new()
@@ -339,11 +427,18 @@ func test_equipment_integration() -> void:
 	target_stats.name = "StatsComponent"
 	var target_base = StatsData.new()
 	target_base.max_health = 1000.0
+	target_base.armor = 0.0
+	target_base.dodge_chance = 0.0
 	target_stats.base_stats = target_base
 	target.add_child(target_stats)
+
 	var target_combat = CombatComponent.new()
 	target_combat.name = "CombatComponent"
 	target.add_child(target_combat)
+	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	target_stats._ready()
+	target_combat._ready()
 	
 	# 无装备时的伤害
 	var damage1 = combat.attack(target, 100.0)
@@ -351,8 +446,8 @@ func test_equipment_integration() -> void:
 	
 	# 添加攻击力修改器（模拟装备）
 	var mod = StatModifier.new()
-	mod.stat_name = "attack"
 	mod.value = 50.0
+	mod.stat_type = StatModifier.StatType.PHYSICAL_DAMAGE
 	mod.modifier_type = StatModifier.ModifierType.FLAT
 	stats.add_modifier(mod)
 	
@@ -375,10 +470,24 @@ func test_quest_event_integration() -> void:
 	attacker.name = "Player"
 	var attacker_stats = StatsComponent.new()
 	attacker_stats.name = "StatsComponent"
+	var attacker_base = StatsData.new()
+	attacker_base.strength = 0
+	attacker_base.agility = 0
+	attacker_base.intelligence = 0
+	attacker_base.vitality = 0
+	attacker_base.luck = 0
+	attacker_base.physical_damage = 10.0  # 设置基础攻击力
+	attacker_stats.base_stats = attacker_base
 	attacker.add_child(attacker_stats)
+	
+	
 	var attacker_combat = CombatComponent.new()
 	attacker_combat.name = "CombatComponent"
 	attacker.add_child(attacker_combat)
+	
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	attacker_stats._ready()
+	attacker_combat._ready()
 	
 	var enemy = Node2D.new()
 	enemy.name = "Goblin"
@@ -386,22 +495,23 @@ func test_quest_event_integration() -> void:
 	enemy_stats.name = "StatsComponent"
 	var enemy_base = StatsData.new()
 	enemy_base.max_health = 50.0
+	enemy_base.armor = 0.0
 	enemy_stats.base_stats = enemy_base
 	enemy.add_child(enemy_stats)
+	
 	var enemy_combat = CombatComponent.new()
 	enemy_combat.name = "CombatComponent"
 	enemy.add_child(enemy_combat)
 	
-	# 模拟QuestEventBus（如果存在）
-	var event_triggered = false
-	if QuestEventBus and QuestEventBus.instance:
-		QuestEventBus.instance.damage_dealt.connect(func(_t, _d): event_triggered = true)
+	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	enemy_stats._ready()
+	enemy_combat._ready()
 	
 	# 攻击
 	attacker_combat.attack(enemy, 30.0)
 	
-	# 这个测试依赖QuestEventBus是否在场景中
-	var passed = true  # 基础通过，如果有事件总线会更好
+	# 这个测试不再依赖QuestEventBus
+	var passed = true
 	
 	attacker.free()
 	enemy.free()
