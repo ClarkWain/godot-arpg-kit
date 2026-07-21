@@ -55,6 +55,21 @@ jobs:
           chmod +x /usr/local/bin/godot
           godot --version
 
+      # Godot 4 项目首次使用需要生成 .godot/imported/ 缓存，否则
+      # test_runner 里 `load("res://xxx.gd").new()` 会抛
+      # "Nonexistent function 'new' in base 'GDScript'"。
+      # `--import` 会静默做导入然后退出（Godot 4.5 支持）。
+      - name: Import project (generate .godot cache)
+        run: |
+          godot --headless --import 2>&1 | tail -20 || true
+          # 上面失败也不阻塞——只要 .godot/ 目录被创建即可
+          ls -la .godot/ || echo ".godot/ still missing, will retry via --editor --quit"
+          # 双保险：老版本 Godot / 部分环境需要 --editor --quit 才能生成
+          if [ ! -d .godot/imported ]; then
+            timeout 60 godot --headless --editor --quit 2>&1 | tail -20 || true
+          fi
+          ls -la .godot/imported/ | head -5 || echo "(no imported dir; some projects have no importable resources)"
+
       - name: Run ${{ matrix.suite.name }} suite
         run: |
           set -o pipefail
