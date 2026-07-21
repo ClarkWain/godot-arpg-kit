@@ -74,7 +74,7 @@ godot --headless --path . 'res://tests/stats/test_scene.tscn'
 
 ### 4. 集成到你自己的项目
 
-见下方 [「使用示例」](#四使用示例) 章节。
+见下方 [「使用示例」](#四使用示例) 章节，或者读一份**完整的分步教程**：[docs/getting_started.md](docs/getting_started.md) — 15 分钟从零到跑通「攻击 → 掉落 → 拾取」全链路。
 
 ---
 
