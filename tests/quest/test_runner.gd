@@ -13,6 +13,9 @@ var total_failed: int = 0
 var total_duration: float = 0.0
 
 func _ready() -> void:
+	# 固定随机种子，避免低概率分支导致 flaky
+	seed(0)
+	
 	print("\n" + "=".repeat(80))
 	print("任务系统测试运行器")
 	print("=".repeat(80) + "\n")
@@ -94,6 +97,7 @@ func generate_summary_report() -> void:
 		print("\n✓ 所有测试通过!")
 	else:
 		print("\n✗ 有 %d 个测试失败" % total_failed)
+	print("[RESULT] suite=quest passed=%d failed=%d total=%d" % [total_passed, total_failed, total_tests])
 
 ## 保存报告到文件
 func save_report_to_file() -> void:

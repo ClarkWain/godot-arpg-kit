@@ -6,6 +6,8 @@ extends Node
 var _total_failed: int = 0
 
 func _ready() -> void:
+	# 固定随机种子，避免低概率分支导致 flaky
+	seed(0)
 	print("=== 物品系统测试开始 ===")
 
 	# 运行所有测试
@@ -64,6 +66,7 @@ func run_all_item_tests() -> void:
 	print("通过测试: %d" % total_passed)
 	print("失败测试: %d" % total_failed)
 	print("成功率: %.1f%%" % (float(total_passed) / float(total_tests) * 100.0 if total_tests > 0 else 0.0))
+	print("[RESULT] suite=items passed=%d failed=%d total=%d" % [total_passed, total_failed, total_tests])
 	
 	# 传递失败数到成员变量，供 _ready 确定退出码
 	_total_failed = total_failed

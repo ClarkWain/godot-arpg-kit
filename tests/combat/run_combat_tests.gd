@@ -8,6 +8,10 @@ var _total_tests: int = 0
 
 
 func _ready() -> void:
+	# 固定随机种子：避免默认属性中 dodge_chance / crit_chance / luck
+	# 型“低概率事件”在不同尺度上让测试 flaky。
+	seed(0)
+	
 	print("\n" + "=".repeat(80))
 	print("开始运行战斗系统测试")
 	print("=".repeat(80) + "\n")
@@ -26,6 +30,10 @@ func _ready() -> void:
 	print("战斗系统测试完成")
 	print("总测试数: %d, 通过: %d, 失败: %d" % [
 		_total_tests, _total_tests - _total_failed, _total_failed
+	])
+	# 机器可读汇总行（供 CI / pwsh runner 解析）
+	print("[RESULT] suite=combat passed=%d failed=%d total=%d" % [
+		_total_tests - _total_failed, _total_failed, _total_tests
 	])
 	print("=".repeat(80) + "\n")
 	

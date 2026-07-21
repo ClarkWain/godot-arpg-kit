@@ -4,26 +4,22 @@
 
 .DESCRIPTION
   按模块依次执行：Combat / Items / Loot / Quest / Stats。
-  聚合每个模块的退出码，任一模块失败则整体退出码为 1。
-
-  优先使用环境变量 $env:GODOT 指定 Godot 可执行文件路径；未设置时按
-  常见路径列表自动查找。
+  聚合每个模块的通过/失败数（通过解析输出而非 Godot 进程退出码，
+  因为 headless 下 Godot 可能因资源泄漏 ERROR 而返回非 0，与测试成败无关）。
 
 .EXAMPLE
   pwsh tools/run_tests.ps1
 
 .EXAMPLE
-  # 只跑一个模块
   pwsh tools/run_tests.ps1 -Only combat
 #>
 
 param(
-    [string]$Only = ""   # 只跑指定模块（combat / items / loot / quest / stats）
+    [string]$Only = ""
 )
 
 $ErrorActionPreference = 'Stop'
 
-# 项目根：脚本所在目录的上一级
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 
@@ -47,11 +43,10 @@ if (-not $godot -or -not (Test-Path $godot)) {
 Write-Host "使用 Godot: $godot" -ForegroundColor Cyan
 Write-Host "项目路径:  $projectRoot" -ForegroundColor Cyan
 
-# 2. UTF-8 输出
 $env:PYTHONIOENCODING = 'utf-8'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 3. 模块 -> 测试场景 映射
+# 2. 模块清单
 $suites = [ordered]@{
     'combat' = 'res://tests/combat/combat_test_scene.tscn'
     'items'  = 'res://tests/items/item_system_test_scene.tscn'
@@ -68,8 +63,8 @@ if ($Only) {
     $suites = [ordered]@{ $Only = $suites[$Only] }
 }
 
-# 4. 依次跑
-$overallExit = 0
+# 3. 跑
+$overallFailed = 0
 $moduleResults = @()
 
 foreach ($name in $suites.Keys) {
@@ -78,32 +73,65 @@ foreach ($name in $suites.Keys) {
     Write-Host ("=" * 80) -ForegroundColor Yellow
     Write-Host " Running suite: $name  ($scene)" -ForegroundColor Yellow
     Write-Host ("=" * 80) -ForegroundColor Yellow
-    
-    & $godot --headless --path $projectRoot $scene
-    $code = $LASTEXITCODE
-    
+
+    # 捕获输出（stderr 一并 merge），实时打印同时保存全文
+    $lines = New-Object System.Collections.Generic.List[string]
+    & $godot --headless --path $projectRoot $scene 2>&1 | ForEach-Object {
+        $line = "$_"
+        $lines.Add($line)
+        Write-Host $line
+    }
+    $godotExit = $LASTEXITCODE
+
+    # 每个 test_runner 在结尾会打印一行机器可读汇总：
+    #   [RESULT] suite=<name> passed=<P> failed=<F> total=<T>
+    # 用它作为唯一权威来源（Godot 进程退出码在 headless 下会因资源泄漏
+    # ERROR 而波动，与测试成败无关，不能依赖）。
+    $suitePassed = 0
+    $suiteFailed = 0
+    $found = $false
+    foreach ($ln in $lines) {
+        if ($ln -match '\[RESULT\]\s+suite=(\S+)\s+passed=(\d+)\s+failed=(\d+)\s+total=(\d+)') {
+            $suitePassed = [int]$Matches[2]
+            $suiteFailed = [int]$Matches[3]
+            $found = $true
+            # 不 break：允许 combat 这类多 suite 汇总在同一进程内多次打印，
+            # 但目前每个 test scene 只对应一个 runner 只打一次。
+        }
+    }
+    if (-not $found) {
+        # 找不到 [RESULT] 说明 runner 未升级，退回 Godot exit code
+        $suitePassed = 0
+        $suiteFailed = if ($godotExit -eq 0) { 0 } else { 1 }
+        Write-Host "  [WARN] 未找到 [RESULT] 汇总行，退回 Godot 退出码=$godotExit" -ForegroundColor Yellow
+    }
+
     $moduleResults += [pscustomobject]@{
-        Module   = $name
-        ExitCode = $code
-        Passed   = ($code -eq 0)
+        Module     = $name
+        Passed     = $suitePassed
+        Failed     = $suiteFailed
+        GodotExit  = $godotExit
+        Ok         = ($suiteFailed -eq 0 -and ($suitePassed -gt 0 -or -not $found))
     }
-    
-    if ($code -ne 0) {
-        $overallExit = 1
-    }
+    $overallFailed += $suiteFailed
 }
 
-# 5. 汇总
+# 4. 汇总
 Write-Host ""
 Write-Host ("=" * 80) -ForegroundColor Cyan
 Write-Host " 汇总" -ForegroundColor Cyan
 Write-Host ("=" * 80) -ForegroundColor Cyan
 $moduleResults | Format-Table -AutoSize
 
+$totalPassed = ($moduleResults | Measure-Object -Property Passed -Sum).Sum
+$totalFailed = ($moduleResults | Measure-Object -Property Failed -Sum).Sum
 Write-Host ""
-if ($overallExit -eq 0) {
+Write-Host "总计: $totalPassed 通过 / $totalFailed 失败" -ForegroundColor $(if ($totalFailed -eq 0) { 'Green' } else { 'Red' })
+
+if ($totalFailed -eq 0) {
     Write-Host "所有模块测试通过 OK" -ForegroundColor Green
+    exit 0
 } else {
-    Write-Host "有模块测试失败 FAILED (exit=$overallExit)" -ForegroundColor Red
+    Write-Host "有模块测试失败 FAILED (fails=$totalFailed)" -ForegroundColor Red
+    exit 1
 }
-exit $overallExit

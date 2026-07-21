@@ -274,6 +274,9 @@ func test_death_handling() -> void:
 	base_stats.luck = 0
 	base_stats.max_health = 100.0
 	base_stats.armor = 0.0
+	# 清 dodge_chance：下面直接调 stats.take_damage 会走完整减伤链，
+	# 默认 5% 闪避会让致命伤害空跑导致本测试 flaky。
+	base_stats.dodge_chance = 0.0
 	stats.base_stats = base_stats
 	entity.add_child(stats)
 	stats._ready()

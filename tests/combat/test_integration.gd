@@ -272,8 +272,16 @@ func test_buff_affects_damage() -> void:
 	var attacker_stats = StatsComponent.new()
 	attacker_stats.name = "StatsComponent"
 	var attacker_base = StatsData.new()
+	# 清零核心属性：luck 默认 10 会通过 luck_crit_bonus 额外 +1% 暴击率，
+	# 让无 Buff 时的 damage1 偶发暴击变大，导致本测试 flaky。
+	attacker_base.strength = 0
+	attacker_base.agility = 0
+	attacker_base.intelligence = 0
+	attacker_base.vitality = 0
+	attacker_base.luck = 0
 	attacker_base.physical_damage = 10.0
 	attacker_base.crit_chance = 0.0
+	attacker_base.crit_damage = 0.0
 	attacker_stats.base_stats = attacker_base
 	attacker.add_child(attacker_stats)
 
