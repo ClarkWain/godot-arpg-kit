@@ -4,6 +4,31 @@
 
 ---
 
+## [0.1.1] — 2026-07-21
+
+补丁版本，聚焦 CI 稳定性与文档完善。**无生产代码变更**——库使用者可无痛升级。
+
+### ✨ 新增（Added）
+
+- **[docs/getting_started.md](docs/getting_started.md)**：15 分钟集成教程，覆盖 4 种集成方式（fork / 子目录拷贝 / git subtree / addon 展望），6 步集成流程，7 大常见踩坑清单。
+- **[docs/tech-notes/godot-arpg-kit-postmortem.md](docs/tech-notes/godot-arpg-kit-postmortem.md)**：v0.1.0 打造 postmortem 长文（389 行），分三节复盘：战斗管线双重结算 BUG 诊断、测试 flake 治理 (`seed(0)`)、Godot 4 CI 实践。
+
+### 🔧 变更（Changed）
+
+- **CI 换掉 `barichello/godot-ci:4.5` docker image，改用官方 Godot binary + `apt install` X 库**：
+  - 之前用 `barichello` 时 5 个 matrix job 中 4 个卡在 "Run suite" 步骤 20+ 分钟不返回。该镜像本身为 export 设计，不适合 headless test。
+  - 现改成在 `ubuntu-latest` runner 上下载官方 4.5-stable linux binary，加 `timeout-minutes: 10` 兜底。
+  - CI 时间从"不可预测"缩到 **2 分钟**。
+- **CI 增加 `godot --headless --import` 预热步骤**：
+  - 新建项目 CI 首次运行时缺少 `.godot/imported/` 缓存，导致 `load("res://xxx.gd").new()` 失败：`Nonexistent function 'new' in base 'GDScript'`。
+  - 现在在跑测试前先做 `--import`，失败时回退到 `--editor --quit`（60s 超时兜底）。
+
+### 🐛 修复（Fixed）
+
+- 无生产代码修复。CI 修复见 Changed 段。
+
+---
+
 ## [0.1.0] — 2026-07-21
 
 首个公开发布版本。**189 个测试全部通过**，稳定可用。
@@ -65,3 +90,4 @@
 ---
 
 [0.1.0]: https://github.com/ClarkWain/godot-arpg-kit/releases/tag/v0.1.0
+[0.1.1]: https://github.com/ClarkWain/godot-arpg-kit/releases/tag/v0.1.1
