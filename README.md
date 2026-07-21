@@ -77,6 +77,8 @@ godot --headless --path . 'res://tests/stats/test_scene.tscn'
 
 见下方 [「使用示例」](#四使用示例) 章节，或者读一份**完整的分步教程**：[docs/getting_started.md](docs/getting_started.md) — 15 分钟从零到跑通「攻击 → 掉落 → 拾取」全链路。
 
+> 想看**技术复盘**（这个项目怎么修 BUG、怎么治 flake、怎么调 CI）？读 [docs/tech-notes/godot-arpg-kit-postmortem.md](docs/tech-notes/godot-arpg-kit-postmortem.md)。
+
 ---
 
 ## 三、系统总览
