@@ -6,7 +6,8 @@
 <p align="center">
   <img alt="Godot" src="https://img.shields.io/badge/Godot-4.5%2B-478CBF?logo=godotengine&logoColor=white">
   <img alt="Language" src="https://img.shields.io/badge/GDScript-100%25-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-189%2F189%20passing-brightgreen">
+  <a href="https://github.com/ClarkWain/godot-arpg-kit/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/ClarkWain/godot-arpg-kit/actions/workflows/tests.yml/badge.svg"></a>
+  <img alt="Local tests" src="https://img.shields.io/badge/local%20tests-189%2F189-brightgreen">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-lightgrey">
 </p>
 
