@@ -24,6 +24,8 @@ func run_all_tests() -> void:
 	test_knockback_multiplies_direction_correctly()
 	test_equip_item_transactional_success()
 	test_equip_item_transactional_rollback_on_fail()
+	test_add_item_partial_success_emits_signals()
+	test_default_reaction_debuffs_registered()
 
 	print_report()
 
@@ -454,6 +456,94 @@ func test_equip_item_transactional_rollback_on_fail() -> void:
 			break
 	passed = assert_true(still_in_bag,
 		"装备失败时物品应回滚到背包（不允许丢失）") and passed
+	
+	host.free()
+	end_test(passed)
+
+
+# ---------------------------------------------------------------------------
+# 12. add_item 部分成功：应 emit item_added(-1) 与 inventory_full 让 UI 刷新
+# ---------------------------------------------------------------------------
+func test_add_item_partial_success_emits_signals() -> void:
+	start_test("add_item 部分成功应发信号（历史 BUG 只 return false）")
+	
+	var inv := InventoryManager.new()
+	inv.slot_count = 1   # 只有 1 个格子，方便触发"没空格但可堆叠"路径
+	inv.use_weight_limit = false
+	inv.auto_stack = true
+	inv.prefer_existing_stacks = true
+	
+	var host := Node.new()
+	host.add_child(inv)
+	inv._ready()
+	
+	# 造一个 max_stack=5 的物品数据
+	var data := ItemData.new()
+	data.id = "test_stackable"
+	data.item_name = "Test Stackable"
+	data.max_stack = 5
+	
+	# 先放入一叠 3 个，占满唯一格子
+	var first := ItemInstance.create(data, 3)
+	inv.add_item(first)
+	# 此时 slot 0: {data, 3}
+	
+	# 计数捕获信号（用 Dictionary 作为可变容器；GDScript lambda 修改
+	# 局部 int 只作用于闭包内副本，需要引用类型才能被外部读取）
+	var counters := {"full": 0}
+	var added_events: Array = []
+	inv.item_added.connect(func(item, slot_index): added_events.append(slot_index))
+	inv.inventory_full.connect(func(): counters.full += 1)
+	
+	# 再放入 6 个：ItemInstance.create() 会把 count 裁到 max_stack=5，
+	# 所以 second.stack_count = 5。堆叠时 slot 0 只能吃下 space=2 变
+	# 满（5），剩 3 个塞不下 → 部分成功路径。
+	var second := ItemInstance.create(data, 6)
+	var ok := inv.add_item(second)
+	
+	var passed := assert_false(ok, "部分入包应返回 false（未完全放入）")
+	passed = assert_greater(added_events.size(), 0,
+		"部分入包也应 emit item_added（历史 BUG 只 return false 不发信号）") and passed
+	passed = assert_contains(added_events, -1,
+		"部分入包 emit 的 slot_index 应为 -1（表示堆叠到已有格子）") and passed
+	passed = assert_equal(counters.full, 1,
+		"部分入包应 emit inventory_full 让 UI 提示背包已满") and passed
+	# 检查最终数量：slot 0 应为 5（max_stack），second.stack_count 应为 3
+	var slot0: ItemInstance = inv.get_item(0)
+	passed = assert_almost_equal(float(slot0.stack_count), 5.0, 0.001,
+		"slot 0 应堆叠到 max_stack=5") and passed
+	passed = assert_almost_equal(float(second.stack_count), 3.0, 0.001,
+		"未入包部分应保留在原 ItemInstance 里（5 - 2 = 3）") and passed
+	
+	host.free()
+	end_test(passed)
+
+
+# ---------------------------------------------------------------------------
+# 13. 默认元素反应 debuff（shocked / burning / frozen）应在启动时被注册
+# ---------------------------------------------------------------------------
+func test_default_reaction_debuffs_registered() -> void:
+	start_test("默认元素反应 debuff 应已被 CombatEventBus 注册")
+	
+	var passed := true
+	for effect_id in ["shocked", "burning", "frozen"]:
+		var registered: bool = StatusEffectManager.registered_effects.has(effect_id)
+		passed = assert_true(registered,
+			"'%s' 应已由 CombatEventBus 自动注册（历史 BUG：从未注册，元素反应静默失败）" % effect_id
+		) and passed
+	
+	# 尝试添加一个 "burning" 效果，验证 register_effect 与 add_effect 都工作
+	var host := Node.new()
+	var sem := StatusEffectManager.new()
+	sem.name = "StatusEffectManager"
+	host.add_child(sem)
+	sem._ready()
+	
+	var inst = sem.add_effect("burning")
+	passed = assert_not_null(inst,
+		"add_effect('burning') 应成功返回实例（未注册时会返回 null）") and passed
+	passed = assert_true(sem.has_effect("burning"),
+		"应用后 has_effect('burning') 应为 true") and passed
 	
 	host.free()
 	end_test(passed)

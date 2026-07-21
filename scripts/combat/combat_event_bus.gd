@@ -71,6 +71,65 @@ func _ready() -> void:
 		instance = self
 	else:
 		push_warning("CombatEventBus instance already exists!")
+	
+	# 注册元素反应会附加的默认状态效果（shocked / burning / frozen），
+	# 避免 DamageCalculator 的 damage_info.status_effects 引用未注册效果
+	# 而在 StatusEffectManager.add_effect 里静默失败。
+	# 若用户已经自行注册同名效果，此处会跳过（register_effect 内部去重）。
+	_register_default_reaction_effects()
+
+
+func _register_default_reaction_effects() -> void:
+	var specs := [
+		{
+			"id": "shocked",
+			"name": "感电",
+			"description": "感电：受到雷+水元素反应，短暂减速/DPS 提升。",
+			"type": StatusEffectData.EffectType.DEBUFF,
+			"duration": 3.0,
+			"tick_interval": 0.0,
+			"tick_value": 0.0,
+			"tick_damage_type": DamageInfo.DamageType.LIGHTNING,
+		},
+		{
+			"id": "burning",
+			"name": "燃烧",
+			"description": "燃烧：受到火+雷超载反应，每秒受到火焰伤害。",
+			"type": StatusEffectData.EffectType.DOT,
+			"duration": 4.0,
+			"tick_interval": 1.0,
+			"tick_value": 5.0,
+			"tick_damage_type": DamageInfo.DamageType.FIRE,
+		},
+		{
+			"id": "frozen",
+			"name": "冰冻",
+			"description": "冰冻：受到冰+雷超导反应，短暂无法行动。",
+			"type": StatusEffectData.EffectType.CONTROL,
+			"duration": 2.0,
+			"tick_interval": 0.0,
+			"tick_value": 0.0,
+			"tick_damage_type": DamageInfo.DamageType.ICE,
+		},
+	]
+	
+	for spec in specs:
+		# 已由外部先注册的话，跳过（保持外部自定义优先）
+		if StatusEffectManager.registered_effects.has(spec.id):
+			continue
+		
+		var data := StatusEffectData.new()
+		data.effect_id = spec.id
+		data.effect_name = spec.name
+		data.description = spec.description
+		data.effect_type = spec.type
+		data.duration = spec.duration
+		data.tick_interval = spec.tick_interval
+		data.tick_value = spec.tick_value
+		data.tick_damage_type = spec.tick_damage_type
+		data.stack_type = StatusEffectData.StackType.REFRESH
+		data.can_be_cleansed = true
+		StatusEffectManager.register_effect(data)
 
 ## ========== 便捷方法 ==========
 

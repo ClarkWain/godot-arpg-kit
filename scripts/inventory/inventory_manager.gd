@@ -83,9 +83,14 @@ func add_item(item: ItemInstance, preferred_slot: int = -1) -> bool:
 	if target_slot < 0:
 		# 没有空格子且无法完全堆叠
 		if remaining_stack < item.stack_count:
-			# 部分添加成功
+			# 部分添加成功：至少有一部分堆叠到已有格子上。
+			# 修复历史 BUG：旧实现只 return false 不发信号，UI 拿不到
+			# "已入包一部分" 的通知；这里补发 item_added(-1) 与
+			# inventory_full，让外部可以准确区分"部分入包"和"完全失败"。
 			item.stack_count = remaining_stack
 			_update_weight()
+			item_added.emit(item, -1)  # -1 表示堆叠到已有格子（无法定位单一 slot）
+			inventory_full.emit()
 			return false
 		else:
 			inventory_full.emit()
@@ -644,18 +649,44 @@ func from_dict(data: Dictionary, item_database: Dictionary) -> void:
 ## ========== 内部方法 ==========
 
 ## 尝试与已有物品堆叠
+##
+## 修复历史 BUG：旧实现通过 `ItemInstance.try_stack()` 走 `can_stack_with()`，
+## 而 `can_stack_with()` 要求 `stack_count + other.stack_count <= max_stack`，
+## 一旦相加溢出就完全不堆叠，导致 6 件商品遇到剩余空间 2 时会**一件都不堆**。
+## 这里直接手动做部分堆叠：只要 item_data 一致、双方均未 bound、无随机词缀，
+## 就把 `min(空间, remaining)` 塞进去。
 func _try_stack_with_existing(item: ItemInstance) -> int:
-	var remaining = item.stack_count
+	var remaining := item.stack_count
+	if remaining <= 0 or item.item_data == null:
+		return remaining
+	
+	var max_per_slot: int = max(1, item.item_data.max_stack)
+	# 不可堆叠的物品直接跳过
+	if max_per_slot <= 1:
+		return remaining
 	
 	for i in range(slot_count):
-		if slots[i] and slots[i].can_stack_with(item):
-			var temp_item = ItemInstance.create(item.item_data, remaining)
-			var stacked = slots[i].try_stack(temp_item)
-			remaining -= stacked
-			slot_changed.emit(i)
-			
-			if remaining <= 0:
-				break
+		if remaining <= 0:
+			break
+		var slot_item: ItemInstance = slots[i]
+		if slot_item == null:
+			continue
+		if slot_item.item_data != item.item_data:
+			continue
+		if slot_item.is_bound or item.is_bound:
+			continue
+		if not slot_item.random_modifiers.is_empty():
+			continue
+		if not item.random_modifiers.is_empty():
+			continue
+		if slot_item.stack_count >= max_per_slot:
+			continue
+		
+		var space: int = max_per_slot - slot_item.stack_count
+		var to_stack: int = min(space, remaining)
+		slot_item.stack_count += to_stack
+		remaining -= to_stack
+		slot_changed.emit(i)
 	
 	return remaining
 

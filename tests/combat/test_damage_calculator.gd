@@ -152,6 +152,8 @@ func test_defense_reduction() -> void:
 	base_stats.vitality = 0  # 清除体质加成
 	base_stats.luck = 0
 	base_stats.armor = 50.0
+	# 清 dodge_chance：默认 0.05 会有 5% 概率闪避导致本测试 flaky
+	base_stats.dodge_chance = 0.0
 	stats.base_stats = base_stats
 	defender.add_child(stats)
 	stats._ready()
