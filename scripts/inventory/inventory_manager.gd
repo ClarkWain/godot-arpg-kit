@@ -31,6 +31,12 @@ signal gold_changed(new_amount: int)
 ## 拾取时是否优先填充已有堆叠
 @export var prefer_existing_stacks: bool = true
 
+@export_group("External References")
+## 可选：装备管理器引用。设置后，equip_item() 会走事务化装备流程
+## （remove -> equip；失败时把物品放回背包），避免物品在装备失败时丢失。
+## 未设置时保持旧行为（仅 remove_item，由调用方负责装备）。
+@export var equipment_manager: Node = null
+
 ## ========== 内部数据 ==========
 var slots: Array[ItemInstance] = []  # 背包格子数组
 var gold: int = 0  # 金币数量
@@ -167,6 +173,13 @@ func remove_item_by_id(item_id: String, amount: int = 1) -> int:
 ## ========== 使用物品 ==========
 
 ## 使用指定格子的物品
+##
+## 修复历史 BUG：旧实现只发信号 + 减数量，不真正应用 ConsumableData 的
+## 效果，导致 "喝药水 = 药水消失但角色不回血"。现在会在 target 上
+## 应用消耗品效果（回血/回蓝/回耐/Buff/解 Debuff）。
+##
+## target 为空时，尝试用 `get_parent()`（例如挂在角色下的 InventoryManager
+## 会自动把角色本体当成使用者）。
 func use_item(slot_index: int, target: Node = null) -> bool:
 	if not _is_valid_slot(slot_index):
 		return false
@@ -179,9 +192,17 @@ func use_item(slot_index: int, target: Node = null) -> bool:
 	if not item.item_data is ConsumableData:
 		return false
 	
-	var consumable = item.item_data as ConsumableData
+	var consumable := item.item_data as ConsumableData
 	
-	# 执行使用逻辑（这里简化处理，实际应该通过事件系统）
+	# 默认使用者：InventoryManager 的父节点（通常是角色本体）
+	if target == null:
+		target = get_parent()
+	
+	# 应用消耗品效果（若 target 缺少必要组件则自动降级为 no-op，
+	# 但不会阻止物品消耗——保留旧行为的语义）
+	_apply_consumable_effect(consumable, target)
+	
+	# 通知外部（UI/音效/事件总线）
 	item_used.emit(item)
 	
 	# 减少数量
@@ -195,9 +216,131 @@ func use_item(slot_index: int, target: Node = null) -> bool:
 	return true
 
 
+## 应用消耗品效果到指定目标。
+##
+## 分派规则（覆盖 ConsumableData.EffectType 的常见分支）：
+##   INSTANT_HEAL     -> stats.heal(effect_value)
+##   INSTANT_MANA     -> stats.restore_mana(effect_value)
+##   INSTANT_STAMINA  -> stats.restore_stamina(effect_value)
+##   BUFF/STAT_BOOST  -> 把 temp_modifiers 加到 stats（BUFF 附带持续时间）
+##   HEAL_OVER_TIME / MANA_OVER_TIME -> 挂一个持续时间的 HEALTH_REGEN / MANA_REGEN 修正器
+##   DEBUFF_CURE      -> 通过 StatusEffectManager 移除指定 debuff
+##
+## 若目标缺少对应组件，则跳过（例如无 StatsComponent 的容器也能"使用"物品
+## 触发信号，只是没有实际效果）。
+func _apply_consumable_effect(consumable: ConsumableData, target: Node) -> void:
+	if consumable == null or target == null:
+		return
+	
+	var stats: Node = _find_stats_component(target)
+	var status_mgr: Node = _find_status_effect_manager(target)
+	
+	match consumable.effect_type:
+		ConsumableData.EffectType.INSTANT_HEAL:
+			if stats and stats.has_method("heal"):
+				stats.heal(consumable.effect_value)
+		
+		ConsumableData.EffectType.INSTANT_MANA:
+			if stats and stats.has_method("restore_mana"):
+				stats.restore_mana(consumable.effect_value)
+		
+		ConsumableData.EffectType.INSTANT_STAMINA:
+			if stats and stats.has_method("restore_stamina"):
+				stats.restore_stamina(consumable.effect_value)
+		
+		ConsumableData.EffectType.BUFF, ConsumableData.EffectType.STAT_BOOST:
+			if stats:
+				for template in consumable.temp_modifiers:
+					var mod: StatModifier = template.duplicate()
+					if consumable.effect_type == ConsumableData.EffectType.BUFF:
+						# BUFF 是限时的
+						mod.duration = consumable.effect_duration \
+							if consumable.effect_duration > 0.0 else mod.duration
+					else:
+						# STAT_BOOST 是永久的
+						mod.duration = -1.0
+					stats.add_modifier(mod)
+		
+		ConsumableData.EffectType.HEAL_OVER_TIME:
+			# 用一个限时的 HEALTH_REGEN 修正器实现 HOT
+			if stats:
+				var mod := StatModifier.new()
+				mod.stat_type = StatModifier.StatType.HEALTH_REGEN
+				mod.modifier_type = StatModifier.ModifierType.FLAT
+				# 若配了 per_second 用它，否则退回 effect_value/effect_duration
+				if consumable.effect_per_second > 0.0:
+					mod.value = consumable.effect_per_second
+				elif consumable.effect_duration > 0.0:
+					mod.value = consumable.effect_value / consumable.effect_duration
+				else:
+					mod.value = consumable.effect_value
+				mod.duration = maxf(consumable.effect_duration, 0.001)
+				mod.source_id = "consumable_%s" % consumable.id if "id" in consumable else "consumable"
+				stats.add_modifier(mod)
+		
+		ConsumableData.EffectType.MANA_OVER_TIME:
+			if stats:
+				var mod := StatModifier.new()
+				mod.stat_type = StatModifier.StatType.MANA_REGEN
+				mod.modifier_type = StatModifier.ModifierType.FLAT
+				if consumable.effect_per_second > 0.0:
+					mod.value = consumable.effect_per_second
+				elif consumable.effect_duration > 0.0:
+					mod.value = consumable.effect_value / consumable.effect_duration
+				else:
+					mod.value = consumable.effect_value
+				mod.duration = maxf(consumable.effect_duration, 0.001)
+				mod.source_id = "consumable_%s" % consumable.id if "id" in consumable else "consumable"
+				stats.add_modifier(mod)
+		
+		ConsumableData.EffectType.DEBUFF_CURE:
+			if status_mgr and status_mgr.has_method("remove_effect"):
+				for debuff_id in consumable.cures_debuffs:
+					status_mgr.remove_effect(debuff_id, true)
+		
+		_:
+			# TELEPORT / RESURRECT 之类的高级效果目前不在 InventoryManager
+			# 的直接职责范围，交给外部监听 `item_used` 信号处理。
+			pass
+
+
+## 尝试在 target 上找到 StatsComponent
+func _find_stats_component(target: Node) -> Node:
+	if target == null:
+		return null
+	if target is StatsComponent:
+		return target
+	var node = target.get_node_or_null("StatsComponent")
+	if node:
+		return node
+	if target.has_method("get_stats_component"):
+		return target.get_stats_component()
+	return null
+
+
+## 尝试在 target 上找到 StatusEffectManager
+func _find_status_effect_manager(target: Node) -> Node:
+	if target == null:
+		return null
+	var node = target.get_node_or_null("StatusEffectManager")
+	if node:
+		return node
+	if target.has_method("get_status_effect_manager"):
+		return target.get_status_effect_manager()
+	return null
+
+
 ## ========== 装备操作 ==========
 
-## 装备物品（需要配合 EquipmentManager 使用）
+## 装备物品
+##
+## 若 `equipment_manager` 已配置且暴露 `equip(item)` 方法，则内部完成
+## 事务化装备：`remove_item(slot) -> equipment_manager.equip(item)`；
+## 装备失败时把物品放回背包，返回 null。**这是推荐路径**。
+##
+## 若 `equipment_manager` 未配置，则保留旧行为——仅从背包移除物品并
+## 返回给调用方，由调用方负责后续装备/归还，否则物品会泄漏。
+## 此路径会 push_warning 提醒。
 func equip_item(slot_index: int) -> ItemInstance:
 	if not _is_valid_slot(slot_index):
 		return null
@@ -206,7 +349,24 @@ func equip_item(slot_index: int) -> ItemInstance:
 	if not item or not item.item_data is EquipmentData:
 		return null
 	
-	# 从背包移除（由 EquipmentManager 管理）
+	# 事务化装备路径
+	if equipment_manager and equipment_manager.has_method("equip"):
+		var removed = remove_item(slot_index)
+		if not removed:
+			return null
+		
+		var equipped_ok: bool = equipment_manager.equip(removed)
+		if equipped_ok:
+			return removed
+		
+		# 装备失败：rollback，物品归还背包
+		add_item(removed)
+		push_warning("InventoryManager.equip_item: 装备失败，物品已归还背包 [%s]" % removed.item_data.id)
+		return null
+	
+	# 兼容旧调用：仅移除
+	push_warning("InventoryManager.equip_item: 未配置 equipment_manager，仅移除物品；" \
+		+ "调用方须负责后续装备或调用 add_item 归还，否则物品会丢失。")
 	return remove_item(slot_index)
 
 

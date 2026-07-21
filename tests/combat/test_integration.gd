@@ -133,6 +133,10 @@ func test_skill_with_status_effects() -> void:
 	var target_base = StatsData.new()
 	target_base.max_health = 100.0
 	target_base.armor = 0.0
+	# 清 dodge_chance，避免默认 5% 闪避 + luck 加成让技能"未命中"
+	# 而在 CombatComponent.receive_damage 中提前 return，跳过状态效果应用。
+	target_base.dodge_chance = 0.0
+	target_base.luck = 0
 	target_stats.base_stats = target_base
 	target.add_child(target_stats)
 	
@@ -175,6 +179,20 @@ func test_elemental_combo() -> void:
 	var attacker_stats = StatsComponent.new()
 	attacker_stats.name = "StatsComponent"
 	var attacker_base_stats = StatsData.new()
+	# 关键：StatsData 里 magic_damage 默认 5.0、crit_chance 默认 0.05、
+	# luck 默认 10（luck 会通过 luck_crit_bonus 追加暴击率），
+	# 若不清零会让 50 * (1+5/100) * 2 = 105、或叠上暴击变成 157.5，
+	# 都会击穿本用例 epsilon=1.0 的断言。这里显式清零，让测试确定性。
+	attacker_base_stats.strength = 0
+	attacker_base_stats.agility = 0
+	attacker_base_stats.intelligence = 0
+	attacker_base_stats.vitality = 0
+	attacker_base_stats.luck = 0
+	attacker_base_stats.physical_damage = 0.0
+	attacker_base_stats.magic_damage = 0.0
+	attacker_base_stats.fire_damage = 0.0
+	attacker_base_stats.crit_chance = 0.0
+	attacker_base_stats.crit_damage = 0.0
 	attacker_base_stats.dodge_chance = 0
 	attacker_stats.base_stats = attacker_base_stats
 	attacker.add_child(attacker_stats)
@@ -194,6 +212,15 @@ func test_elemental_combo() -> void:
 	var target_base = StatsData.new()
 	target_base.max_health = 100.0
 	target_base.armor = 0.0
+	# 关键：受击方 vitality 默认 10 会通过派生规则给 armor +10，
+	# 让"看似 0 防御"的目标实际有 10 armor（100 -> 90.91）。
+	# 这里显式清零核心属性 + dodge，让蒸发计算保持确定性。
+	target_base.strength = 0
+	target_base.agility = 0
+	target_base.intelligence = 0
+	target_base.vitality = 0
+	target_base.luck = 0
+	target_base.dodge_chance = 0.0
 	target_stats.base_stats = target_base
 	target.add_child(target_stats)
 	
@@ -355,17 +382,50 @@ func test_dot_kills_enemy() -> void:
 	end_test(passed)
 
 ## 测试: 护盾抵挡伤害
+##
+## 注意：临时护盾的消耗由 DamageCalculator._apply_damage_absorption 完成，
+## CombatComponent.receive_damage 不再自己重复消耗（旧版本会消耗两次）。
+## 该测试通过完整攻击链验证语义：一次攻击 → 护盾抵扣 → 剩余部分才扣血。
 func test_shield_blocks_damage() -> void:
 	start_test("护盾抵挡伤害")
 	
-	# 创建实体
+	# 攻击者
+	var attacker = Node2D.new()
+	var attacker_stats = StatsComponent.new()
+	attacker_stats.name = "StatsComponent"
+	var attacker_base = StatsData.new()
+	attacker_base.strength = 0
+	attacker_base.agility = 0
+	attacker_base.intelligence = 0
+	attacker_base.vitality = 0
+	attacker_base.luck = 0
+	attacker_base.physical_damage = 0.0
+	attacker_base.crit_chance = 0.0
+	attacker_base.crit_damage = 0.0
+	attacker_stats.base_stats = attacker_base
+	attacker.add_child(attacker_stats)
+	
+	var attacker_combat = CombatComponent.new()
+	attacker_combat.name = "CombatComponent"
+	attacker.add_child(attacker_combat)
+	
+	attacker_stats._ready()
+	attacker_combat._ready()
+	
+	# 受击方
 	var entity = Node2D.new()
 	var stats = StatsComponent.new()
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
+	base_stats.strength = 0
+	base_stats.agility = 0
+	base_stats.intelligence = 0
+	base_stats.vitality = 0
+	base_stats.luck = 0
 	base_stats.max_health = 100.0
 	base_stats.armor = 0.0
 	base_stats.crit_chance = 0.0
+	base_stats.dodge_chance = 0.0
 	stats.base_stats = base_stats
 	entity.add_child(stats)
 
@@ -377,25 +437,32 @@ func test_shield_blocks_damage() -> void:
 	status.name = "StatusEffectManager"
 	entity.add_child(status)
 	
-	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
+	# 统一调用 _ready() 函数
 	combat._ready()
 	stats._ready()
 	status._ready()
 	
 	var initial_health = stats.get_stat(StatModifier.StatType.MAX_HEALTH)
 	
-	# 添加护盾
+	# 添加 50 点临时护盾
 	status.add_shield(50.0)
 	
-	# 受到伤害
-	var damage_info = DamageInfo.new(null, entity, 30.0)
-	damage_info.final_damage = 30.0
-	combat.receive_damage(damage_info)
+	# 走完整攻击链：造成 30 点物理伤害
+	var damage_info = attacker_combat.attack(entity, 30.0,
+		DamageInfo.DamageType.PHYSICAL)
 	
-	var current_health = stats.current_health
-	var passed = assert_equal(current_health, initial_health, "护盾应完全抵挡伤害")
-	passed = assert_almost_equal(status.get_shield_amount(), 20.0, 0.1, "护盾应剩余20") and passed
+	var passed = assert_not_null(damage_info, "attack() 应返回 DamageInfo")
+	# 30 点伤害全部被护盾吸收：final_damage 归 0，扣血 0，护盾剩 20
+	passed = assert_almost_equal(damage_info.final_damage, 0.0, 0.1,
+		"final_damage 应被护盾抵为 0") and passed
+	passed = assert_almost_equal(damage_info.absorbed_damage, 30.0, 0.1,
+		"护盾应吸收 30 点伤害") and passed
+	passed = assert_equal(stats.current_health, initial_health,
+		"护盾应完全抵挡伤害") and passed
+	passed = assert_almost_equal(status.get_shield_amount(), 20.0, 0.1,
+		"护盾应剩余 20（50 - 30，且不会因二次消耗而多扣）") and passed
 	
+	attacker.free()
 	entity.free()
 	end_test(passed)
 

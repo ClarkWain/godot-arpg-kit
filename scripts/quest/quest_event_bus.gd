@@ -1,10 +1,14 @@
 ## 任务事件总线
 ## 用于游戏事件与任务系统之间的解耦通信
-class_name QuestEventBus
+##
+## 注意：本类以 autoload 名 QuestEventBus 全局可访问（见
+## project.godot [autoload]）。为避免 autoload 名与 class_name 冲突，
+## 这里不声明 class_name。外部代码可直接用全局符号 QuestEventBus
+## 访问 autoload 实例，也可通过 QuestEventBus.instance（保留旧接口）。
 extends Node
 
-## 单例实例
-static var instance: QuestEventBus = null
+## 单例实例。为兼容去除 class_name 后的类型注解，使用 Node 类型。
+static var instance: Node = null
 
 ## ========== 战斗相关事件 ==========
 

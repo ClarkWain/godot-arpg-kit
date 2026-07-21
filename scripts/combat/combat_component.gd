@@ -125,6 +125,12 @@ func attack(target: Node, base_damage: float, damage_type: DamageInfo.DamageType
 	return damage_info
 
 ## 接收伤害
+##
+## 注意：伤害的减免（闪避、格挡、防御、元素抗性、临时护盾等）已由
+## DamageCalculator.calculate_damage() 在攻击链上游完成，final_damage
+## 就是最终应扣除的血量。这里直接调用 stats_component.lose_health()
+## 进行纯扣血，避免与 stats_component.take_damage() 内部的减伤链
+## 产生双重结算（旧版本会把防御/闪避/护盾各算两遍）。
 func receive_damage(damage_info: DamageInfo) -> void:
 	# 检查无敌状态
 	if is_invincible:
@@ -138,21 +144,22 @@ func receive_damage(damage_info: DamageInfo) -> void:
 	if stats_component:
 		var actual_damage = damage_info.final_damage
 		
-		# 第1步: 临时护盾吸收 (来自StatusEffectManager)
-		if status_effect_manager:
-			actual_damage -= status_effect_manager.consume_shield(actual_damage)
-		
-		# 如果伤害被完全吸收，则提前结束
+		# 如果伤害被完全吸收/闪避/格挡后归零，则提前结束
 		if actual_damage <= 0:
-			# 仍然触发信号，让UI可以显示 "吸收" 字样
+			# 仍然触发信号，让UI可以显示 "吸收/闪避" 字样
 			damage_received.emit(damage_info.source, damage_info)
 			return
 			
 		# 触发受伤动画/效果
 		set_combat_state(CombatState.State.BEING_HIT)
 		
-		# 第2步: 扣除生命值和能量护盾 (由StatsComponent内部处理)
-		stats_component.take_damage(actual_damage)
+		# 直接扣血（不再走 stats_component.take_damage 的减伤链，
+		# 避免与 DamageCalculator 双重结算）。
+		if stats_component.has_method("lose_health"):
+			stats_component.lose_health(actual_damage)
+		else:
+			# 兼容旧接口
+			stats_component.take_damage(actual_damage)
 		
 		# 应用状态效果
 		if status_effect_manager and not damage_info.status_effects.is_empty():
@@ -160,7 +167,9 @@ func receive_damage(damage_info: DamageInfo) -> void:
 				status_effect_manager.add_effect(effect_id)
 		
 		# 应用击退
-		if damage_info.knockback_force.length() > 0 and entity.has_method("apply_knockback"):
+		# 应用击退：knockback_force 现在是标量(float)，与
+		# knockback_direction (Vector2) 相乘得到完整的击退矢量。
+		if damage_info.knockback_force > 0.0 and entity.has_method("apply_knockback"):
 			entity.apply_knockback(damage_info.knockback_force * damage_info.knockback_direction)
 		
 		# 触发信号

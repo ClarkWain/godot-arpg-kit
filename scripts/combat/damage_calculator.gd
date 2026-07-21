@@ -142,14 +142,26 @@ static func _apply_defense_reduction(damage: float, damage_info: DamageInfo) -> 
 	
 	var defense = target_stats.get_stat(StatModifier.StatType.ARMOR)
 	
-	# 获取护甲穿透
+	# 获取攻击者的护甲/法术穿透
 	var source_stats = _get_stats_component(damage_info.source)
-	var armor_penetration = 0.0
+	var penetration = 0.0
 	if source_stats:
-		armor_penetration = source_stats.get_stat(StatModifier.StatType.PHYSICAL_DAMAGE_REDUCTION)
+		# 根据伤害类型选择对应穿透属性；旧版本错误地把
+		# PHYSICAL_DAMAGE_REDUCTION（物理受伤减免）当成护甲穿透，
+		# 现在统一改用专用的 ARMOR_PENETRATION / MAGIC_PENETRATION。
+		var pen_type := StatModifier.StatType.ARMOR_PENETRATION
+		match damage_info.damage_type:
+			DamageInfo.DamageType.PHYSICAL:
+				pen_type = StatModifier.StatType.ARMOR_PENETRATION
+			DamageInfo.DamageType.MAGICAL, DamageInfo.DamageType.FIRE, \
+			DamageInfo.DamageType.ICE, DamageInfo.DamageType.LIGHTNING, \
+			DamageInfo.DamageType.POISON, DamageInfo.DamageType.DARK, \
+			DamageInfo.DamageType.HOLY:
+				pen_type = StatModifier.StatType.MAGIC_PENETRATION
+		penetration = clampf(source_stats.get_stat(pen_type), 0.0, 1.0)
 	
-	# 应用护甲穿透
-	var effective_defense = defense * (1.0 - armor_penetration)
+	# 应用穿透
+	var effective_defense = defense * (1.0 - penetration)
 	
 	# 防御减伤公式: damage_reduction = defense / (defense + 100)
 	var damage_reduction = effective_defense / (effective_defense + 100.0)

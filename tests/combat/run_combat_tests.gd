@@ -13,6 +13,8 @@ func _ready() -> void:
 	run_status_effect_manager_tests()
 	run_skill_manager_tests()
 	run_integration_tests()
+	run_damage_pipeline_regression_tests()
+	run_high_priority_fixes_tests()
 	
 	# 生成总体报告
 	print("\n" + "=".repeat(80))
@@ -50,4 +52,16 @@ func run_skill_manager_tests() -> void:
 func run_integration_tests() -> void:
 	print("\n--- 集成测试 ---")
 	var test = preload("res://tests/combat/test_integration.gd").new()
+	test.run_all_tests()
+
+## 运行伤害管线回归测试（防止双重减伤 BUG 复发）
+func run_damage_pipeline_regression_tests() -> void:
+	print("\n--- 伤害管线回归测试 ---")
+	var test = preload("res://tests/combat/test_damage_pipeline_regression.gd").new()
+	test.run_all_tests()
+
+## 运行高优先级 BUG 回归测试（护甲穿透 / 消耗品使用 / 事件总线 autoload）
+func run_high_priority_fixes_tests() -> void:
+	print("\n--- 高优先级 BUG 回归测试 ---")
+	var test = preload("res://tests/combat/test_high_priority_fixes.gd").new()
 	test.run_all_tests()

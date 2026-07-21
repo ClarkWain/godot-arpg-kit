@@ -1036,6 +1036,8 @@ func _get_base_value(stat_type: StatModifier.StatType) -> float:
 		StatModifier.StatType.ITEM_QUALITY: return base_stats.item_quality
 		StatModifier.StatType.MAX_WEIGHT: return base_stats.max_weight
 		StatModifier.StatType.INVENTORY_SLOTS: return base_stats.inventory_slots
+		StatModifier.StatType.ARMOR_PENETRATION: return base_stats.armor_penetration
+		StatModifier.StatType.MAGIC_PENETRATION: return base_stats.magic_penetration
 	
 	return 0.0
 

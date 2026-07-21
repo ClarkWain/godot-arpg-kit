@@ -15,6 +15,12 @@ run/main_scene="uid://ceeehqfl8b1n3"
 config/features=PackedStringArray("4.5", "Mobile")
 config/icon="res://icon.svg"
 
+[autoload]
+
+; 将事件总线注册为全局自动加载，避免因未实例化而静默丢失事件。
+CombatEventBus="*res://scripts/combat/combat_event_bus.gd"
+QuestEventBus="*res://scripts/quest/quest_event_bus.gd"
+
 [display]
 
 window/size/viewport_width=640

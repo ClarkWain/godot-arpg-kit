@@ -37,8 +37,12 @@ var is_critical: bool = false
 ## 暴击倍率
 var critical_multiplier: float = 1.0
 
-## 击退力度
-var knockback_force: Vector2 = Vector2.ZERO
+## 击退力度（标量）
+##
+## 旧版本使用 Vector2，与 knockback_direction 相乘时会退化为分量
+## 乘积，可能把向量限制到单一轴。现已改为 float 标量，与
+## knockback_direction (Vector2) 乘积后得到真正的“力×方向”向量。
+var knockback_force: float = 0.0
 
 ## 击退方向
 var knockback_direction: Vector2 = Vector2.ZERO

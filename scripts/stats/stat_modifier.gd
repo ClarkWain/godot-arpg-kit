@@ -113,6 +113,10 @@ enum StatType {
 	# 负重系统
 	MAX_WEIGHT,         ## 最大负重
 	INVENTORY_SLOTS,    ## 背包格子数量
+
+	# 攻击穿透（追加在末尾，避免打乱已有资源的枚举编号）
+	ARMOR_PENETRATION,          ## 护甲穿透率(0-1范围) - 攻击者忽略目标护甲的百分比
+	MAGIC_PENETRATION,          ## 法术穿透率(0-1范围) - 攻击者忽略目标魔抗的百分比
 }
 
 # 元素类型枚举

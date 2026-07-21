@@ -256,37 +256,139 @@ func test_damage_absorption() -> void:
 	end_test(passed)
 
 ## 测试: 护甲穿透
+##
+## 覆盖修复：旧实现把 PHYSICAL_DAMAGE_REDUCTION（受击方物理受伤减免）错误
+## 地当成攻击者的护甲穿透使用。现在改为专用字段 ARMOR_PENETRATION（物理）
+## 与 MAGIC_PENETRATION（法术）。
 func test_armor_penetration() -> void:
 	start_test("护甲穿透")
 	
-	var attacker = Node.new()
-	var defender = Node.new()
+	# --- 场景 A：无穿透，作为 baseline ---
+	var atk_a := Node.new()
+	var def_a := Node.new()
+	var atk_stats_a := StatsComponent.new()
+	atk_stats_a.name = "StatsComponent"
+	var atk_base_a := StatsData.new()
+	atk_base_a.strength = 0
+	atk_base_a.agility = 0
+	atk_base_a.intelligence = 0
+	atk_base_a.vitality = 0
+	atk_base_a.luck = 0
+	atk_base_a.physical_damage = 0.0
+	atk_base_a.crit_chance = 0.0
+	atk_base_a.crit_damage = 0.0
+	atk_base_a.armor_penetration = 0.0
+	atk_stats_a.base_stats = atk_base_a
+	atk_a.add_child(atk_stats_a)
+	atk_stats_a._ready()
 	
-	# 攻击者（目前护甲穿透需要通过修改器系统）
-	var attacker_stats = StatsComponent.new()
-	attacker_stats.name = "StatsComponent"
-	var attacker_base = StatsData.new()
-	attacker_base.crit_chance = 0.0
-	attacker_base.crit_damage = 0.0
-	attacker_stats.base_stats = attacker_base
-	attacker.add_child(attacker_stats)
+	var def_stats_a := StatsComponent.new()
+	def_stats_a.name = "StatsComponent"
+	var def_base_a := StatsData.new()
+	def_base_a.strength = 0
+	def_base_a.agility = 0
+	def_base_a.intelligence = 0
+	def_base_a.vitality = 0
+	def_base_a.luck = 0
+	def_base_a.armor = 100.0
+	def_base_a.dodge_chance = 0.0
+	def_stats_a.base_stats = def_base_a
+	def_a.add_child(def_stats_a)
+	def_stats_a._ready()
 	
-	# 防御者有100点防御
-	var defender_stats = StatsComponent.new()
-	defender_stats.name = "StatsComponent"
-	var defender_base = StatsData.new()
-	defender_base.armor = 100.0
-	defender_stats.base_stats = defender_base
-	defender.add_child(defender_stats)
+	var info_a := DamageInfo.new(atk_a, def_a, 100.0, DamageInfo.DamageType.PHYSICAL)
+	var dmg_a := DamageCalculator.calculate_damage(info_a)
+	# 100 * (1 - 100/(100+100)) = 50
+	var passed := assert_almost_equal(dmg_a, 50.0, 1.0,
+		"无护甲穿透：100 armor 应减伤 50%")
 	
-	var damage_info = DamageInfo.new(attacker, defender, 100.0, DamageInfo.DamageType.PHYSICAL)
-	var final_damage = DamageCalculator.calculate_damage(damage_info)
+	# --- 场景 B：50% 护甲穿透 ---
+	var atk_b := Node.new()
+	var def_b := Node.new()
+	var atk_stats_b := StatsComponent.new()
+	atk_stats_b.name = "StatsComponent"
+	var atk_base_b := StatsData.new()
+	atk_base_b.strength = 0
+	atk_base_b.agility = 0
+	atk_base_b.intelligence = 0
+	atk_base_b.vitality = 0
+	atk_base_b.luck = 0
+	atk_base_b.physical_damage = 0.0
+	atk_base_b.crit_chance = 0.0
+	atk_base_b.crit_damage = 0.0
+	atk_base_b.armor_penetration = 0.5     # 50% 护甲穿透
+	atk_stats_b.base_stats = atk_base_b
+	atk_b.add_child(atk_stats_b)
+	atk_stats_b._ready()
 	
-	# 有防御时伤害应该减少
-	var passed = assert_less(final_damage, 100.0, "有防御时伤害应减少")
+	var def_stats_b := StatsComponent.new()
+	def_stats_b.name = "StatsComponent"
+	var def_base_b := StatsData.new()
+	def_base_b.strength = 0
+	def_base_b.agility = 0
+	def_base_b.intelligence = 0
+	def_base_b.vitality = 0
+	def_base_b.luck = 0
+	def_base_b.armor = 100.0
+	def_base_b.dodge_chance = 0.0
+	def_stats_b.base_stats = def_base_b
+	def_b.add_child(def_stats_b)
+	def_stats_b._ready()
 	
-	attacker.free()
-	defender.free()
+	var info_b := DamageInfo.new(atk_b, def_b, 100.0, DamageInfo.DamageType.PHYSICAL)
+	var dmg_b := DamageCalculator.calculate_damage(info_b)
+	# effective_defense = 100 * (1 - 0.5) = 50
+	# damage_reduction  = 50 / (50 + 100) = 33.33%
+	# final             = 100 * (1 - 0.3333) = 66.67
+	passed = assert_almost_equal(dmg_b, 66.67, 1.0,
+		"50% 护甲穿透：100 armor 应等效为 50 armor，减伤 33%") and passed
+	
+	# --- 场景 C：受击方的物理减免不应再被误当作攻击者的护甲穿透 ---
+	# 攻击者身上有 physical_damage_reduction=1.0（即"受伤 -100%"），若旧实现
+	# 会把它当成 100% 护甲穿透，导致伤害等于 100。修复后此字段与
+	# armor_penetration 完全解耦。
+	var atk_c := Node.new()
+	var def_c := Node.new()
+	var atk_stats_c := StatsComponent.new()
+	atk_stats_c.name = "StatsComponent"
+	var atk_base_c := StatsData.new()
+	atk_base_c.strength = 0
+	atk_base_c.agility = 0
+	atk_base_c.intelligence = 0
+	atk_base_c.vitality = 0
+	atk_base_c.luck = 0
+	atk_base_c.physical_damage = 0.0
+	atk_base_c.crit_chance = 0.0
+	atk_base_c.crit_damage = 0.0
+	atk_base_c.armor_penetration = 0.0
+	atk_base_c.physical_damage_reduction = 0.9   # 攻击者自己的受伤减免
+	atk_stats_c.base_stats = atk_base_c
+	atk_c.add_child(atk_stats_c)
+	atk_stats_c._ready()
+	
+	var def_stats_c := StatsComponent.new()
+	def_stats_c.name = "StatsComponent"
+	var def_base_c := StatsData.new()
+	def_base_c.strength = 0
+	def_base_c.agility = 0
+	def_base_c.intelligence = 0
+	def_base_c.vitality = 0
+	def_base_c.luck = 0
+	def_base_c.armor = 100.0
+	def_base_c.dodge_chance = 0.0
+	def_stats_c.base_stats = def_base_c
+	def_c.add_child(def_stats_c)
+	def_stats_c._ready()
+	
+	var info_c := DamageInfo.new(atk_c, def_c, 100.0, DamageInfo.DamageType.PHYSICAL)
+	var dmg_c := DamageCalculator.calculate_damage(info_c)
+	# 攻击者的物理减免应对穿透没有影响，最终应仍是 50（同场景 A）
+	passed = assert_almost_equal(dmg_c, 50.0, 1.0,
+		"攻击者的 physical_damage_reduction 不应再被误用为护甲穿透") and passed
+	
+	atk_a.free(); def_a.free()
+	atk_b.free(); def_b.free()
+	atk_c.free(); def_c.free()
 	end_test(passed)
 
 ## 测试: 真实伤害

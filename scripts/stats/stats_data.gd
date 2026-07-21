@@ -84,6 +84,12 @@ extends Resource
 ## 物理伤害减免 - 额外的物理伤害减免百分比 (0-0.9)
 @export_range(0, 0.9) var physical_damage_reduction: float = 0.0
 
+@export_group("Attack Penetration")
+## 护甲穿透 - 攻击者忽略目标护甲的百分比 (0-1)
+@export_range(0, 1) var armor_penetration: float = 0.0
+## 法术穿透 - 攻击者忽略目标魔抗的百分比 (0-1)
+@export_range(0, 1) var magic_penetration: float = 0.0
+
 @export_group("Magic Defense")
 ## 魔法抗性 - 减少受到的魔法伤害
 @export var magic_resist: float = 5.0

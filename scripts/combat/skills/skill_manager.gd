@@ -251,7 +251,9 @@ func _apply_skill_to_target(skill_data: SkillData, target: Node) -> void:
 				
 	# 4. 添加击退等其他信息
 	if skill_data.knockback_force > 0:
-		damage_info.knockback_force = Vector2(skill_data.knockback_force, 0)
+		# knockback_force 保持为标量，交给 CombatComponent.receive_damage
+		# 时再乘以 knockback_direction 得到完整的击退向量。
+		damage_info.knockback_force = skill_data.knockback_force
 		if entity is Node2D and target is Node2D:
 			damage_info.knockback_direction = (target.global_position - entity.global_position).normalized()
 			
