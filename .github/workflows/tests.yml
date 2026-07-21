@@ -8,14 +8,14 @@ on:
 
 jobs:
   test:
-    name: All test suites (Godot 4.5 headless)
+    name: Tests (Godot ${{ matrix.godot }} · ${{ matrix.suite.name }})
     runs-on: ubuntu-latest
-    container:
-      image: barichello/godot-ci:4.5
+    timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
+        godot: ['4.5']
         suite:
           - name: combat
             scene: res://tests/combat/combat_test_scene.tscn
@@ -32,7 +32,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Godot 4 headless 需要一些基础的 X 库才能启动（即使不显示窗口）
+      - name: Install Godot dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libx11-6 libxcursor1 libxi6 libxinerama1 libxrandr2 libxrender1 \
+            libgl1 libglx-mesa0 libasound2t64 libpulse0 || \
+          sudo apt-get install -y --no-install-recommends \
+            libx11-6 libxcursor1 libxi6 libxinerama1 libxrandr2 libxrender1 \
+            libgl1 libglx-mesa0 libasound2 libpulse0
+
+      # 使用官方 Godot binary，比 barichello/godot-ci docker image 更轻量、更稳定
+      - name: Download Godot ${{ matrix.godot }}
+        env:
+          GODOT_VERSION: ${{ matrix.godot }}
+        run: |
+          # 4.5.stable 官方下载链接
+          curl -fsSL "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o godot.zip
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+          chmod +x /usr/local/bin/godot
+          godot --version
+
       - name: Run ${{ matrix.suite.name }} suite
-        run: godot --headless --path . '${{ matrix.suite.scene }}'
+        run: |
+          set -o pipefail
+          godot --headless --path . '${{ matrix.suite.scene }}' 2>&1 | tee /tmp/test_output.log
+          # test_runner 在结尾打印 "[RESULT] suite=<n> passed=P failed=F total=T"，
+          # 我们据此判断成败（Godot 进程退出码在 headless 下会因资源泄漏 ERROR 而波动，与测试无关）
+          if grep -qE '\[RESULT\] suite=[a-z]+ passed=[0-9]+ failed=0 total=[1-9]' /tmp/test_output.log; then
+            echo "✓ ${{ matrix.suite.name }} suite passed"
+            exit 0
+          fi
+          echo "✗ ${{ matrix.suite.name }} suite failed or no [RESULT] line found"
+          exit 1
         env:
           PYTHONIOENCODING: utf-8
