@@ -1,0 +1,28 @@
+name: Combat System Tests
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  test:
+    name: Godot 4 headless combat tests
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run combat test suite
+        run: |
+          godot --headless --path . 'res://tests/combat/combat_test_scene.tscn'
+        env:
+          PYTHONIOENCODING: utf-8
+
+      - name: Report
+        if: always()
+        run: echo "Combat suite exit code: ${{ job.status }}"
