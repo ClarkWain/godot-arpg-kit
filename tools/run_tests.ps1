@@ -1,25 +1,25 @@
 <#
 .SYNOPSIS
-  一键运行 2d_arpg 战斗系统测试套件（headless）并按结果返回退出码。
+  一键运行 godot-arpg-kit 所有模块的测试套件（headless）并按结果返回退出码。
 
 .DESCRIPTION
-  本脚本用于：
-    1) 本地快速回归验证
-    2) CI 集成（GitHub Actions / Jenkins / etc）——通过进程退出码判断成败
-    3) Git 预提交钩子——保证提交前所有战斗管线测试通过
+  按模块依次执行：Combat / Items / Loot / Quest / Stats。
+  聚合每个模块的退出码，任一模块失败则整体退出码为 1。
 
   优先使用环境变量 $env:GODOT 指定 Godot 可执行文件路径；未设置时按
   常见路径列表自动查找。
 
 .EXAMPLE
-  # 直接运行
   pwsh tools/run_tests.ps1
 
 .EXAMPLE
-  # 指定 Godot 路径
-  $env:GODOT = 'E:\Developer\Godot_v4.4.1-stable_mono_win64\godot.bat'
-  pwsh tools/run_tests.ps1
+  # 只跑一个模块
+  pwsh tools/run_tests.ps1 -Only combat
 #>
+
+param(
+    [string]$Only = ""   # 只跑指定模块（combat / items / loot / quest / stats）
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -47,14 +47,63 @@ if (-not $godot -or -not (Test-Path $godot)) {
 Write-Host "使用 Godot: $godot" -ForegroundColor Cyan
 Write-Host "项目路径:  $projectRoot" -ForegroundColor Cyan
 
-# 2. 确保输出编码为 UTF-8
+# 2. UTF-8 输出
 $env:PYTHONIOENCODING = 'utf-8'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 3. 运行测试场景
-Write-Host "`n运行战斗测试套件..." -ForegroundColor Yellow
-& $godot --headless --path $projectRoot 'res://tests/combat/combat_test_scene.tscn'
-$exitCode = $LASTEXITCODE
+# 3. 模块 -> 测试场景 映射
+$suites = [ordered]@{
+    'combat' = 'res://tests/combat/combat_test_scene.tscn'
+    'items'  = 'res://tests/items/item_system_test_scene.tscn'
+    'loot'   = 'res://tests/loot/loot_system_test_scene.tscn'
+    'quest'  = 'res://tests/quest/test_scene.tscn'
+    'stats'  = 'res://tests/stats/test_scene.tscn'
+}
 
-Write-Host "`n测试完成，退出码: $exitCode" -ForegroundColor $(if ($exitCode -eq 0) { 'Green' } else { 'Red' })
-exit $exitCode
+if ($Only) {
+    if (-not $suites.Contains($Only)) {
+        Write-Error "未知模块 '$Only'。可选：$($suites.Keys -join ', ')"
+        exit 2
+    }
+    $suites = [ordered]@{ $Only = $suites[$Only] }
+}
+
+# 4. 依次跑
+$overallExit = 0
+$moduleResults = @()
+
+foreach ($name in $suites.Keys) {
+    $scene = $suites[$name]
+    Write-Host ""
+    Write-Host ("=" * 80) -ForegroundColor Yellow
+    Write-Host " Running suite: $name  ($scene)" -ForegroundColor Yellow
+    Write-Host ("=" * 80) -ForegroundColor Yellow
+    
+    & $godot --headless --path $projectRoot $scene
+    $code = $LASTEXITCODE
+    
+    $moduleResults += [pscustomobject]@{
+        Module   = $name
+        ExitCode = $code
+        Passed   = ($code -eq 0)
+    }
+    
+    if ($code -ne 0) {
+        $overallExit = 1
+    }
+}
+
+# 5. 汇总
+Write-Host ""
+Write-Host ("=" * 80) -ForegroundColor Cyan
+Write-Host " 汇总" -ForegroundColor Cyan
+Write-Host ("=" * 80) -ForegroundColor Cyan
+$moduleResults | Format-Table -AutoSize
+
+Write-Host ""
+if ($overallExit -eq 0) {
+    Write-Host "所有模块测试通过 OK" -ForegroundColor Green
+} else {
+    Write-Host "有模块测试失败 FAILED (exit=$overallExit)" -ForegroundColor Red
+}
+exit $overallExit

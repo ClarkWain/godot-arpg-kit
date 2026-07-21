@@ -6,7 +6,7 @@
 <p align="center">
   <img alt="Godot" src="https://img.shields.io/badge/Godot-4.5%2B-478CBF?logo=godotengine&logoColor=white">
   <img alt="Language" src="https://img.shields.io/badge/GDScript-100%25-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-66%2F66%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-189%2F189%20passing-brightgreen">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-lightgrey">
 </p>
 
@@ -22,7 +22,7 @@
 - **数据驱动**：属性、物品、装备、技能、状态效果、掉落表全部是 `Resource`（`.tres`），可以在编辑器里可视化配置。
 - **纯 GDScript**：不需要 Mono / C# / 第三方 addon，直接 `git clone` 后 F5 打开就能用。
 - **事件总线解耦**：`CombatEventBus` / `QuestEventBus` 作为 autoload，各系统通过信号通信，避免硬耦合。
-- **测试覆盖**：66 个单元与回归测试，覆盖伤害管线、状态效果、装备事务、连击等关键路径。
+- **测试覆盖**：189 个单元与回归测试，覆盖 5 大模块（Combat / Items / Loot / Quest / Stats）的关键路径。
 
 ---
 
@@ -50,19 +50,27 @@ godot --editor
 ```powershell
 # Windows PowerShell
 pwsh tools/run_tests.ps1
+
+# 只跑某个模块
+pwsh tools/run_tests.ps1 -Only combat
 ```
 
-脚本会自动定位 Godot 可执行文件（可通过 `$env:GODOT` 覆盖），跑完全部 66 个测试，按结果返回进程退出码。
+脚本会自动定位 Godot 可执行文件（可通过 `$env:GODOT` 覆盖），依次跑完 5 个模块共 189 个测试，按结果返回进程退出码。
 
 **方式 B：直接调 Godot**
 
 ```bash
+# 跑某个模块
 godot --headless --path . 'res://tests/combat/combat_test_scene.tscn'
+godot --headless --path . 'res://tests/items/item_system_test_scene.tscn'
+godot --headless --path . 'res://tests/loot/loot_system_test_scene.tscn'
+godot --headless --path . 'res://tests/quest/test_scene.tscn'
+godot --headless --path . 'res://tests/stats/test_scene.tscn'
 ```
 
 **方式 C：在编辑器里跑**
 
-打开 [tests/combat/combat_test_scene.tscn](tests/combat/combat_test_scene.tscn) 并按 F6。
+打开任一 test_scene，按 F6。
 
 ### 4. 集成到你自己的项目
 
@@ -242,18 +250,23 @@ sequenceDiagram
 
 ## 六、测试与 CI
 
-### 测试套件（66 个）
+### 测试套件（189 个）
 
 | 套件 | 用例数 | 覆盖 |
 |---|---:|---|
-| DamageCalculator | 9 | 属性加成、暴击、闪避、格挡、元素反应、护盾、护甲穿透、真实伤害 |
-| CombatComponent | 9 | 初始化、攻击、受伤、状态机、连击、无敌、死亡、治疗、信号 |
-| StatusEffectManager | 11 | 注册、叠加、DOT、HOT、Buff 属性、护盾、净化、元素追踪、序列化 |
-| SkillManager | 10 | 冷却、施法时间、施法距离、资源消耗、打断、序列化 |
-| 战斗系统集成 | 8 | 完整战斗流程、元素连招、Buff 增伤、DOT 击杀、护盾、装备加成、任务事件 |
-| **伤害管线回归**（新） | 6 | 双重减防 / 双重闪避 / 护盾单次消耗 / 端到端管线 / DOT 路径 / 死亡短路 |
-| **高优先级 BUG 回归**（新） | 13 | 消耗品、EventBus autoload、击退向量、装备事务、部分堆叠、元素 debuff |
-| **合计** | **66** | |
+| **Combat** 套件 | | |
+| · DamageCalculator | 9 | 属性加成、暴击、闪避、格挡、元素反应、护盾、护甲穿透、真实伤害 |
+| · CombatComponent | 9 | 初始化、攻击、受伤、状态机、连击、无敌、死亡、治疗、信号 |
+| · StatusEffectManager | 11 | 注册、叠加、DOT、HOT、Buff 属性、护盾、净化、元素追踪、序列化 |
+| · SkillManager | 10 | 冷却、施法时间、施法距离、资源消耗、打断、序列化 |
+| · 战斗系统集成 | 8 | 完整战斗流程、元素连招、Buff 增伤、DOT 击杀、护盾、装备加成、任务事件 |
+| · **伤害管线回归**（新） | 6 | 双重减防 / 双重闪避 / 护盾单次消耗 / 端到端管线 / DOT 路径 / 死亡短路 |
+| · **高优先级 BUG 回归**（新） | 13 | 消耗品、EventBus autoload、击退向量、装备事务、部分堆叠、元素 debuff |
+| **Items** 套件 | 18 | ItemData / ItemInstance / EquipmentData / ConsumableData / WeaponData |
+| **Loot** 套件 | 11 | LootEntry / LootTable 概率、条件判断、权重抽取 |
+| **Quest** 套件 | 55 | TaskManager / TaskInstance / Objectives / Conditions / Rewards / 集成 |
+| **Stats** 套件 | 39 | StatsData / StatModifier / LuckSystem / StatsComponent |
+| **合计** | **189** | |
 
 ### 一键运行
 
@@ -279,7 +292,7 @@ New-Item -ItemType SymbolicLink `
 
 ### GitHub Actions
 
-[.github/workflows/tests.yml](.github/workflows/tests.yml) 已配置好用 `barichello/godot-ci:4.5` 镜像跑测试。推到 GitHub 后每次 push / pull_request 自动触发。
+[.github/workflows/tests.yml](.github/workflows/tests.yml) 已配置好用 `barichello/godot-ci:4.5` headless 镜像，以 **matrix 方式并行** 跑 5 个模块（combat / items / loot / quest / stats）。推到 GitHub 后每次 push / pull_request 自动触发。
 
 ---
 

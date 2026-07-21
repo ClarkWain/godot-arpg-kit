@@ -2,6 +2,9 @@
 ## 运行所有Loot系统测试
 extends Node
 
+# 累计失败数，用于决定退出码
+var _total_failed: int = 0
+
 func _ready() -> void:
 	print("=== Loot系统测试开始 ===")
 
@@ -10,8 +13,8 @@ func _ready() -> void:
 
 	print("=== Loot系统测试完成 ===")
 	
-	# 退出场景
-	get_tree().quit()
+	# 退出场景（按失败数传退出码，供 CI 判断）
+	get_tree().quit(1 if _total_failed > 0 else 0)
 
 func run_all_loot_tests() -> void:
 	# 创建测试实例
@@ -46,6 +49,9 @@ func run_all_loot_tests() -> void:
 	print("通过测试: %d" % total_passed)
 	print("失败测试: %d" % total_failed)
 	print("成功率: %.1f%%" % (float(total_passed) / float(total_tests) * 100.0 if total_tests > 0 else 0.0))
+	
+	# 传递失败数到成员变量，供 _ready 确定退出码
+	_total_failed = total_failed
 
 	if total_failed == 0:
 		print("🎉 所有测试通过！Loot系统运行正常。")

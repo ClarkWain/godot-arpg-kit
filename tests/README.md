@@ -1,5 +1,29 @@
 # 2D ARPG 测试系统说明
 
+## 快速运行
+
+```powershell
+# 一键跑所有模块（推荐）
+pwsh tools/run_tests.ps1
+
+# 只跑某个模块
+pwsh tools/run_tests.ps1 -Only combat
+```
+
+详情见项目根 [README.md](../README.md#六测试与-ci) 的"测试与 CI"章节。
+
+## 当前状态
+
+**189 个测试全部通过**（Godot 4.5 headless 环境）：
+
+| 模块 | 用例数 |
+|---|---:|
+| Combat（含伤害管线回归 + 高优先级 BUG 回归） | 66 |
+| Items | 18 |
+| Loot | 11 |
+| Quest | 55 |
+| Stats | 39 |
+
 ## 测试结构
 
 项目包含完整的测试覆盖，测试代码组织如下：
@@ -9,38 +33,41 @@ tests/
 ├── base/
 │   └── test_framework.gd          # 共用测试框架基类
 ├── quest/                          # 任务系统测试 (55 个测试)
-│   ├── test_task_manager.gd       # TaskManager 测试 (16/16)
-│   ├── test_task_instance.gd      # TaskInstance 测试 (10/10)
-│   ├── test_objectives.gd         # Objective 测试 (10/10)
-│   ├── test_conditions.gd         # Condition 测试 (7/7)
-│   ├── test_rewards.gd            # Reward 测试 (6/6)
-│   ├── test_integration.gd        # 集成测试 (6/6)
+│   ├── test_task_manager.gd       # TaskManager 测试
+│   ├── test_task_instance.gd      # TaskInstance 测试
+│   ├── test_objectives.gd         # Objective 测试
+│   ├── test_conditions.gd         # Condition 测试
+│   ├── test_rewards.gd            # Reward 测试
+│   ├── test_integration.gd        # 集成测试
 │   └── test_runner.gd             # 测试运行器
-├── stats/                          # 属性系统测试
+├── stats/                          # 属性系统测试 (39 个测试)
 │   ├── test_stat_modifier.gd
 │   ├── test_stats_data.gd
 │   ├── test_stats_component.gd
-│   └── test_luck_system.gd
+│   ├── test_luck_system.gd
+│   └── test_runner.gd
 ├── items/                          # 物品系统测试 (18 个测试)
 │   ├── test_framework.gd          # Items 专用测试辅助
-│   ├── test_item_data.gd          # ItemData 测试 (7/7)
-│   ├── test_item_instance.gd      # ItemInstance 测试 (2/2)
-│   ├── test_equipment_data.gd     # EquipmentData 测试 (4/4)
-│   ├── test_consumable_data.gd    # ConsumableData 测试 (2/2)
-│   ├── test_weapon_data.gd        # WeaponData 测试 (3/3)
-│   └── run_item_tests.gd          # 测试运行脚本
-├── loot/                           # 掉落系统测试 (10 个测试)
-│   ├── test_loot_entry.gd         # LootEntry 测试 (5/5)
-│   ├── test_loot_table.gd         # LootTable 测试 (5/5)
-│   └── run_loot_tests.gd          # 测试运行脚本
-└── combat/                         # 战斗系统测试 (50 个测试)
-    ├── test_damage_calculator.gd  # DamageCalculator 测试 (9/9)
-    ├── test_combat_component.gd   # CombatComponent 测试 (9/9)
-    ├── test_status_effect_manager.gd # StatusEffectManager 测试 (11/11)
-    ├── test_skill_manager.gd      # SkillManager 测试 (10/10)
-    ├── test_integration.gd        # 集成测试 (8/8)
-    ├── run_combat_tests.gd        # 测试运行脚本
-    └── combat_test_scene.tscn     # 测试场景
+│   ├── test_item_data.gd
+│   ├── test_item_instance.gd
+│   ├── test_equipment_data.gd
+│   ├── test_consumable_data.gd
+│   ├── test_weapon_data.gd
+│   └── test_runner.gd
+├── loot/                           # 掉落系统测试 (11 个测试)
+│   ├── test_loot_entry.gd
+│   ├── test_loot_table.gd
+│   └── test_runner.gd
+└── combat/                         # 战斗系统测试 (66 个测试)
+    ├── test_damage_calculator.gd              (9)
+    ├── test_combat_component.gd               (9)
+    ├── test_status_effect_manager.gd          (11)
+    ├── test_skill_manager.gd                  (10)
+    ├── test_integration.gd                    (8)
+    ├── test_damage_pipeline_regression.gd     (6, 新)
+    ├── test_high_priority_fixes.gd            (13, 新)
+    ├── run_combat_tests.gd                    # 测试运行脚本
+    └── combat_test_scene.tscn                 # 测试场景
 ```
 
 ## 测试框架

@@ -1,4 +1,4 @@
-name: Combat System Tests
+name: Tests
 
 on:
   push:
@@ -8,21 +8,31 @@ on:
 
 jobs:
   test:
-    name: Godot 4 headless combat tests
+    name: All test suites (Godot 4.5 headless)
     runs-on: ubuntu-latest
     container:
       image: barichello/godot-ci:4.5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: combat
+            scene: res://tests/combat/combat_test_scene.tscn
+          - name: items
+            scene: res://tests/items/item_system_test_scene.tscn
+          - name: loot
+            scene: res://tests/loot/loot_system_test_scene.tscn
+          - name: quest
+            scene: res://tests/quest/test_scene.tscn
+          - name: stats
+            scene: res://tests/stats/test_scene.tscn
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run combat test suite
-        run: |
-          godot --headless --path . 'res://tests/combat/combat_test_scene.tscn'
+      - name: Run ${{ matrix.suite.name }} suite
+        run: godot --headless --path . '${{ matrix.suite.scene }}'
         env:
           PYTHONIOENCODING: utf-8
-
-      - name: Report
-        if: always()
-        run: echo "Combat suite exit code: ${{ job.status }}"

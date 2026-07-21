@@ -405,6 +405,15 @@ func test_true_damage() -> void:
 	stats.name = "StatsComponent"
 	var base_stats = StatsData.new()
 	base_stats.armor = 1000.0
+	# 清 dodge_chance / vitality：默认 0.05 dodge 会有 5% 概率把伤害归零，
+	# 让本测试 flaky；vitality 默认 10 也会给 armor +10（虽然真实伤害
+	# 无视防御，但让实体属性显式化更清晰）。
+	base_stats.strength = 0
+	base_stats.agility = 0
+	base_stats.intelligence = 0
+	base_stats.vitality = 0
+	base_stats.luck = 0
+	base_stats.dodge_chance = 0.0
 	stats.base_stats = base_stats
 	defender.add_child(stats)
 	stats._ready()

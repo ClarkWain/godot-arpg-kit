@@ -56,7 +56,7 @@ func run_all_tests() -> void:
 	
 	# 退出
 	await get_tree().create_timer(0.5).timeout
-	get_tree().quit()
+	get_tree().quit(1 if total_failed > 0 else 0)
 
 ## 生成总体报告
 func generate_summary_report() -> void:
