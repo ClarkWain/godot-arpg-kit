@@ -180,9 +180,19 @@ var current_gold = inventory.get_gold()
 print("当前金币: %d" % current_gold)
 ```
 
+## 装备转移入口
+
+将 `inventory.equipment_manager` 与 `equipment.inventory` 双向连接到同一组组件。`inventory.equip_item(slot)` 使用实际 `EquipmentManager.equip_from_inventory()`；失败时保持原格子和负重，不通过 `add_item()` 再次尝试回滚。错误地连接到另一背包的管理器会被拒绝。
+
+成功背包通知在装备转移完成后派发。旧装备返回的格子可能与新装备原格子不同，UI 应使用通知中的实际格子，或重新读取背包。`add_item()` 拒绝再次加入背包里已有的同一个实例。
+
 ## 信号系统
 
 InventoryManager 提供了丰富的信号用于UI更新：
+
+`item_added(item, slot_index)` 中的 `item.stack_count` 表示本次实际新增的总数量，包括堆叠到已有格子和新格子的部分；部分入包时不会报告地上余量。负载可能是物品快照，不能再次入包；读取最终背包状态请使用 `get_item()` / `get_item_count()`。`slot_index = -1` 表示仅堆叠到已有格子，可能涉及多个格子。
+
+`add_item()` 返回 `false` 时，若已部分堆叠，传入实例的 `stack_count` 为尚未入包的余量；完全拒绝时数量不变。返回 `true` 后调用者应交出该实例的所有权，不再作为另一份物品使用。
 
 ```gdscript
 # 连接信号
@@ -267,7 +277,8 @@ var file = FileAccess.open("user://player_save.save", FileAccess.READ)
 var save_data = file.get_var()
 
 # 恢复背包状态 (需要物品数据库)
-inventory.from_dict(save_data.inventory, item_database)
+if not inventory.from_dict(save_data.inventory, item_database):
+    print("背包恢复失败，当前状态保留")
 ```
 
 ## 高级功能
@@ -514,3 +525,13 @@ func buy_inventory_expansion(cost: int, slots_to_add: int) -> bool:
 - 装备物品从背包移除后不会自动放回，需要手动管理
 - 整理和排序操作会触发大量 `slot_changed` 信号
 - 批量操作时注意性能影响，考虑使用延迟更新
+
+## 恢复结果与通知
+
+`from_dict()` 先解码全部物品，再替换背包。未知物品、错误字段、重复格子或实例 ID、非法容量/金币使整次加载返回 `false`；原物品、金币和重量保持，且不发送恢复通知。容量上限为 100000 格，避免损坏存档导致无界分配。整数字段接受 JSON 的整数值浮点表示，拒绝小数、非有限值和超出 JSON 安全整数范围的值。
+
+成功时重新计算重量并返回 `true`，发送 `gold_changed` 与 `inventory_restored`，不发送 `item_added`、`item_removed` 或使用事件。UI 应监听 `inventory_restored` 重绘全部格子。恢复回调中的嵌套加载返回 `false`。存档可恢复超过当前负重限制的内容，以免配置变更导致物品丢失。
+
+物品的嵌套自定义数据在保存与恢复时深拷贝；缺失实例 ID 的旧数据生成新 ID。物品定义仍由调用方提供的 `item_database` 共享。堆叠数量、耐久与词缀字段非法时，`ItemInstance.from_dict()` 返回 `null`，不再静默截断数量。
+
+此接口保证单个背包的失败保护；与装备、任务联合加载时，调用方仍需协调各模块的提交，并检查跨模块物品身份重复。

@@ -39,6 +39,9 @@ func run_all_tests() -> void:
 	test_repeatable_task()
 	test_prerequisite_task()
 	test_save_and_load()
+	test_load_replaces_runtime()
+	test_invalid_load_preserves_runtime()
+	test_save_snapshot_isolation()
 	test_get_active_tasks()
 	test_get_available_tasks()
 	
@@ -360,8 +363,7 @@ func test_save_and_load() -> void:
 	# 保存
 	var save_data = task_manager.save_data()
 	
-	# 清空并加载
-	task_manager.player_tasks.clear()
+	# 加载时由管理器替换旧实例
 	task_manager.load_data(save_data)
 	
 	var instance = task_manager.get_task_instance("save_load_task")
@@ -415,5 +417,85 @@ func test_get_available_tasks() -> void:
 	var available = task_manager.get_available_tasks()
 	var passed = assert_equal(available.size(), 2, "应该有2个可接取任务")
 	
+	end_test(passed)
+	teardown()
+
+func test_load_replaces_runtime() -> void:
+	setup()
+	start_test("重复恢复清理索引与旧实例回调")
+	var task = MockObjects.create_test_task_data("reload")
+	task.objectives.append(MockObjects.create_count_objective("kill_enemy", "goblin", 5))
+	task_manager.register_task(task)
+	task_manager.accept_task("reload")
+	var previous = task_manager.get_task_instance("reload")
+	var saved = task_manager.save_data()
+	var passed = assert_true(task_manager.load_data(saved), "有效恢复成功")
+	passed = assert_true(task_manager.load_data(saved), "重复恢复成功") and passed
+	var updates: Array = []
+	task_manager.task_updated.connect(func(id, progress): updates.append(id))
+	task_manager.task_completed.connect(func(id): updates.append(id))
+	previous.state_changed.emit(TaskState.State.ACTIVE, TaskState.State.COMPLETED)
+	previous.progress_updated.emit(0.5)
+	passed = assert_equal(updates.size(), 0, "旧实例不能通知管理器") and passed
+	task_manager.update_task_progress({"type": "kill_enemy", "target_id": "goblin", "count": 1})
+	passed = assert_equal((task_manager.get_task_instance("reload").objectives[0] as CountObjective).current_count, 1, "重复恢复不会重复派发事件") and passed
+	passed = assert_true(task_manager.load_data({"tasks": []}), "空存档清空任务") and passed
+	passed = assert_true(task_manager._event_index.is_empty(), "旧事件索引已清空") and passed
+	end_test(passed)
+	teardown()
+
+func test_invalid_load_preserves_runtime() -> void:
+	setup()
+	start_test("无效恢复保持当前任务")
+	var task = MockObjects.create_test_task_data("valid")
+	task.objectives.append(MockObjects.create_count_objective("kill_enemy", "goblin", 5))
+	task_manager.register_task(task)
+	task_manager.accept_task("valid")
+	var original = task_manager.get_task_instance("valid")
+	var saved = task_manager.save_data()
+	var invalid: Array = [{"tasks": {}}, {"tasks": [null]}, {"tasks": [{"task_id": "missing"}]}, {"tasks": [saved.tasks[0], saved.tasks[0]]}, {"tasks": [saved.tasks[0], {"task_id": "missing"}]}]
+	for field in ["state", "completion_count", "metadata", "objectives"]:
+		var bad = saved.duplicate(true)
+		bad.tasks[0][field] = "invalid"
+		invalid.append(bad)
+	var huge_count = saved.duplicate(true)
+	huge_count.tasks[0].completion_count = 1e100
+	invalid.append(huge_count)
+	var bad_objective = saved.duplicate(true)
+	bad_objective.tasks[0].objectives[0].current_count = -1
+	invalid.append(bad_objective)
+	var passed = true
+	for bad in invalid:
+		passed = assert_false(task_manager.load_data(bad), "损坏存档应返回失败") and passed
+		passed = assert_true(task_manager.get_task_instance("valid") == original, "失败保持原实例") and passed
+	task_manager.update_task_progress({"type": "kill_enemy", "target_id": "goblin", "count": 1})
+	passed = assert_equal((original.objectives[0] as CountObjective).current_count, 1, "失败后事件索引仍有效") and passed
+	var json_data: Dictionary = JSON.parse_string(JSON.stringify(saved))
+	passed = assert_true(task_manager.load_data(json_data), "接受 JSON 数值类型") and passed
+	end_test(passed)
+	teardown()
+
+func test_save_snapshot_isolation() -> void:
+	setup()
+	start_test("任务存档字典相互隔离")
+	var task = MockObjects.create_test_task_data("snapshot")
+	task.objectives.append(MockObjects.create_state_objective("location", "town"))
+	task.objectives.append(MockObjects.create_count_objective("kill_enemy", "goblin", 5))
+	task_manager.register_task(task)
+	task_manager.accept_task("snapshot")
+	var instance = task_manager.get_task_instance("snapshot")
+	instance.metadata = {"nested": {"value": 1}}
+	instance.objectives[1].custom_data = {"nested": {"value": 2}}
+	var saved = task_manager.save_data()
+	saved.tasks[0].metadata.nested.value = 3
+	saved.tasks[0].objectives[1].custom_data.nested.value = 4
+	var passed = assert_equal(instance.metadata.nested.value, 1, "保存快照不修改元数据")
+	passed = assert_equal(instance.objectives[1].custom_data.nested.value, 2, "保存快照不修改目标数据") and passed
+	passed = assert_true(task_manager.load_data(saved), "快照恢复成功") and passed
+	saved.tasks[0].metadata.nested.value = 5
+	saved.tasks[0].objectives[1].custom_data.nested.value = 6
+	instance = task_manager.get_task_instance("snapshot")
+	passed = assert_equal(instance.metadata.nested.value, 3, "恢复不持有调用者元数据") and passed
+	passed = assert_equal(instance.objectives[1].custom_data.nested.value, 4, "恢复不持有调用者目标数据") and passed
 	end_test(passed)
 	teardown()

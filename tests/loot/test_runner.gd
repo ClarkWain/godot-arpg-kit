@@ -11,7 +11,7 @@ func _ready() -> void:
 	print("=== Loot系统测试开始 ===")
 
 	# 运行所有测试
-	run_all_loot_tests()
+	await run_all_loot_tests()
 
 	print("=== Loot系统测试完成 ===")
 	
@@ -30,6 +30,9 @@ func run_all_loot_tests() -> void:
 	print("\n--- 运行LootTable测试 ---")
 	test_loot_table.run_all_tests()
 
+	var test_runtime = load("res://tests/loot/test_loot_runtime.gd").new()
+	await test_runtime.run_all_tests()
+
 	# 输出汇总报告
 	print("\n=== 测试汇总报告 ===")
 	print("LootEntry测试: %s" % test_loot_entry.get_test_summary())
@@ -40,7 +43,7 @@ func run_all_loot_tests() -> void:
 	var total_passed = 0
 	var total_failed = 0
 
-	var all_tests = [test_loot_entry, test_loot_table]
+	var all_tests = [test_loot_entry, test_loot_table, test_runtime]
 	for test in all_tests:
 		total_tests += test.total_tests
 		total_passed += test.passed_tests

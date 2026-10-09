@@ -1,244 +1,71 @@
-# 2D ARPG 测试系统说明
+# 测试与质量门槛
 
-## 快速运行
+需要 **Godot 4.5 或更高、Python 3.9 或更高**。纯 GDScript，无第三方 addon 或 Python 包依赖。CI 固定验证 Godot 4.5 与 4.6.3；其他版本不等同于已经验证。
+
+从仓库根目录运行（Windows 可将 `python3` 换成 `py -3`）：
+
+```bash
+python3 tools/run_tests.py
+python3 tools/run_tests.py --only combat
+python3 -m unittest discover -s tools/tests -v
+```
+
+PowerShell 使用相同实现：
 
 ```powershell
-# 一键跑所有模块（推荐）
 pwsh tools/run_tests.ps1
-
-# 只跑某个模块
 pwsh tools/run_tests.ps1 -Only combat
 ```
 
-详情见项目根 [README.md](../README.md#六测试与-ci) 的"测试与 CI"章节。
+通过 `GODOT` 环境变量或 `--godot /path/to/godot` 指定引擎，默认从 PATH 查找 `godot`。支持 `--timeout 120` 和 `--output-dir /path/to/results`。
 
-## 当前状态
+## 结果判定
 
-**189 个测试全部通过**（Godot 4.5 headless 环境）：
+入口先导入项目，再依次运行 Combat、Items、Loot、Quest、Stats 的真实测试场景。导入失败时不会继续。每个模块必须满足：
 
-| 模块 | 用例数 |
-|---|---:|
-| Combat（含伤害管线回归 + 高优先级 BUG 回归） | 66 |
-| Items | 18 |
-| Loot | 11 |
-| Quest | 55 |
-| Stats | 39 |
+- 输出唯一、模块名称正确的 `[RESULT]` 汇总。
+- 实际执行至少一个测试，计数一致且没有失败。
+- Godot 退出码为 0，无意外引擎错误、脚本错误或资源泄漏。
 
-## 测试结构
+只有 Items 的 `ItemInstance.create(null)` 和 Quest 的空任务 ID 测试允许各自的精确错误行；其他错误不能靠“汇总通过”掩盖。超时、零测试、重复或缺失汇总均返回失败。预期的业务警告保留在日志中。
 
-项目包含完整的测试覆盖，测试代码组织如下：
+每次运行创建独立的 `.godot/test-results/run-*/` 目录，保存导入日志、五个模块日志及机器可读 `summary.json`。实际测试数量以本次汇总为准，不读取历史报告。CI 上传这些文件作为构建产物。
 
-```
-tests/
-├── base/
-│   └── test_framework.gd          # 共用测试框架基类
-├── quest/                          # 任务系统测试 (55 个测试)
-│   ├── test_task_manager.gd       # TaskManager 测试
-│   ├── test_task_instance.gd      # TaskInstance 测试
-│   ├── test_objectives.gd         # Objective 测试
-│   ├── test_conditions.gd         # Condition 测试
-│   ├── test_rewards.gd            # Reward 测试
-│   ├── test_integration.gd        # 集成测试
-│   └── test_runner.gd             # 测试运行器
-├── stats/                          # 属性系统测试 (39 个测试)
-│   ├── test_stat_modifier.gd
-│   ├── test_stats_data.gd
-│   ├── test_stats_component.gd
-│   ├── test_luck_system.gd
-│   └── test_runner.gd
-├── items/                          # 物品系统测试 (18 个测试)
-│   ├── test_framework.gd          # Items 专用测试辅助
-│   ├── test_item_data.gd
-│   ├── test_item_instance.gd
-│   ├── test_equipment_data.gd
-│   ├── test_consumable_data.gd
-│   ├── test_weapon_data.gd
-│   └── test_runner.gd
-├── loot/                           # 掉落系统测试 (11 个测试)
-│   ├── test_loot_entry.gd
-│   ├── test_loot_table.gd
-│   └── test_runner.gd
-└── combat/                         # 战斗系统测试 (66 个测试)
-    ├── test_damage_calculator.gd              (9)
-    ├── test_combat_component.gd               (9)
-    ├── test_status_effect_manager.gd          (11)
-    ├── test_skill_manager.gd                  (10)
-    ├── test_integration.gd                    (8)
-    ├── test_damage_pipeline_regression.gd     (6, 新)
-    ├── test_high_priority_fixes.gd            (13, 新)
-    ├── run_combat_tests.gd                    # 测试运行脚本
-    └── combat_test_scene.tscn                 # 测试场景
-```
+Quest 与 Stats 的详细报告写到 Godot `user://quest_test_report.txt` 和 `user://stats_test_report.txt`，不会覆盖仓库文件。旧的仓库内报告仅是历史记录。
 
-## 测试框架
+## 集成回归
 
-### 共用基类 (`tests/base/test_framework.gd`)
+Combat 模块包含两类任务集成检查：
 
-所有测试继承自 `TestFramework` 类，提供：
+- autoload 启动后创建、释放、重建 TaskManager，匹配事件只转发一次。
+- 攻击敌人 → CombatComponent 死亡 → EnemyLootComponent 生成一个掉落物 → 拾取进入背包 → 装备移出背包并增加属性 → 击杀、收集、装备三个目标共同完成任务。
 
-**断言方法：**
-- `assert_equal(actual, expected, message)` - 断言相等
-- `assert_not_equal(actual, expected, message)` - 断言不相等
-- `assert_true(value, message)` - 断言为真
-- `assert_false(value, message)` - 断言为假
-- `assert_null(value, message)` - 断言为 null
-- `assert_not_null(value, message)` - 断言不为 null
-- `assert_almost_equal(actual, expected, epsilon, message)` - 浮点数近似相等
-- `assert_contains(array, value, message)` - 数组包含元素
-- `assert_not_contains(array, value, message)` - 数组不包含元素
-- `assert_greater(actual, expected, message)` - 大于
-- `assert_greater_equal(actual, expected, message)` - 大于等于
-- `assert_less(actual, expected, message)` - 小于
-- `assert_less_equal(actual, expected, message)` - 小于等于
-- `assert_not_empty(value, message)` - 字符串不为空
+完整链路使用真实场景树和组件生命周期，并启用掉落对象池。业务层显式连接背包实际新增、装备、击杀信号到任务事件总线；核心组件不会替游戏决定任务规则。
 
-**测试流程方法：**
-- `start_test(test_name)` - 开始一个测试
-- `end_test(passed)` - 结束测试并记录结果
-- `print_report()` - 打印测试报告
-- `get_test_summary()` - 获取测试摘要
+图形交互、物理碰撞定位、平台导出与存档版本迁移仍需相应的专项验证，不能从 headless 测试通过推断。
 
-## 运行测试
+## 添加测试
 
-### 命令行方式
+在相应模块的测试脚本中使用框架的 `start_test()`、断言和 `end_test()`，并把方法加入 `run_all_tests()`。新增测试文件需要加入模块 runner 的累计统计。异步测试必须由 runner `await` 到结束后再输出 `[RESULT]`；创建的节点、信号连接和计时器需要清理。
 
-**Quest 系统测试：**
-```bash
-godot --headless scene/quest_system_test_scene.tscn
-```
+涉及组件集成时优先加入真实场景树，让 Godot 自动执行 `_ready()`，并验证状态、信号负载及实际副作用。不要用无断言的 `passed = true` 代替行为验证。
 
-**Items 系统测试：**
-```bash
-godot --headless -s tests/items/run_item_tests.gd
-# 或
-godot --headless tests/items/item_system_test_scene.tscn
-```
 
-**Loot 系统测试：**
-```bash
-godot --headless -s tests/loot/run_loot_tests.gd
-# 或
-godot --headless tests/loot/loot_system_test_scene.tscn
-```
+## 掉落运行时回归
 
-**Stats 系统测试：**
-```bash
-godot --headless scene/stats_test_scene.tscn
-```
+Loot 模块还验证满包后的保留与重试、部分堆叠数量守恒、堆叠加新格子的事件数量、负重拒绝、缺少背包与自定义接收方、金币重复拾取、入包信号重入、对象复用状态复位、旧计时器取消、清场隔离、池满溢出、外部释放后补池、生成器销毁、无精灵消失及物品转金币的图标复位，以及真实物理碰撞触发拾取。Items 模块验证事件快照保留耐久、绑定、词缀和追踪 ID，且数量与嵌套数据互相隔离。
 
-**Combat 系统测试：**
-```bash
-godot --headless -s tests/combat/run_combat_tests.gd
-# 或
-godot --headless tests/combat/combat_test_scene.tscn
-```
 
-### 场景方式
+## 装备运行时回归
 
-在 Godot 编辑器中直接运行对应的测试场景文件：
-- `scene/quest_system_test_scene.tscn`
-- `tests/items/item_system_test_scene.tscn`
-- `tests/loot/loot_system_test_scene.tscn`
-- `scene/stats_test_scene.tscn`
-- `tests/combat/combat_test_scene.tscn`
+Items 模块验证满包卸装、空间预检查通过但实际入包拒绝、换装超重/等级失败的原位回滚、满格换装及重入、不同返还格子的通知、监听器填入原格子的通知隔离、背包和直接装备入口、缺少背包、重复实例、共享资源隔离、损坏/修理属性恢复，以及提交后通知中的正常监听器操作。
 
-## 测试覆盖率
 
-### Quest 系统 (96.4%)
-- **总计**: 55 个测试，53 个通过
-- **TaskManager**: 16/16 (100%)
-- **TaskInstance**: 9/10 (90%) *
-- **Objective**: 9/10 (90%) *
-- **Condition**: 7/7 (100%)
-- **Reward**: 6/6 (100%)
-- **Integration**: 6/6 (100%)
+## 任务恢复回归
 
-\* 信号相关测试在命令行模式下可能不可靠，建议使用场景模式运行
+Quest 模块验证重复加载后的事件派发、旧实例信号隔离、空存档清场、损坏字段/未知任务/重复 ID 的失败保护，以及原生字典和 JSON 往返恢复、嵌套存档快照隔离。
 
-### Items 系统 (100%)
-- **总计**: 18 个测试，全部通过
-- **ItemData**: 7/7 (100%)
-- **ItemInstance**: 2/2 (100%)
-- **EquipmentData**: 4/4 (100%)
-- **ConsumableData**: 2/2 (100%)
-- **WeaponData**: 3/3 (100%)
 
-### Loot 系统 (100%)
-- **总计**: 10 个测试，全部通过
-- **LootEntry**: 5/5 (100%)
-- **LootTable**: 5/5 (100%)
+## 物品存档恢复回归
 
-### Combat 系统 (新增)
-- **总计**: 50 个测试
-- **DamageCalculator**: 9 个测试
-  - 基础伤害计算、属性加成、暴击、防御削减
-  - 闪避/格挡、元素反应、护盾吸收
-  - 护甲穿透、真实伤害
-- **CombatComponent**: 9 个测试
-  - 初始化、攻击目标、接收伤害
-  - 状态转换、连击系统、无敌状态
-  - 死亡处理、治疗、信号
-- **StatusEffectManager**: 11 个测试
-  - 注册/添加/移除效果、效果叠加
-  - DOT/HOT效果、Buff属性修改
-  - 护盾系统、净化、元素追踪、序列化
-- **SkillManager**: 10 个测试
-  - 注册/装备/卸载技能、使用技能
-  - 冷却管理、资源消耗、施法时间
-  - 施法距离、打断施法、序列化
-- **Integration**: 8 个测试
-  - 完整战斗流程、技能附加状态效果
-  - 元素连招、Buff影响伤害
-  - DOT击杀、护盾抵挡、装备集成、任务事件集成
-
-## 已知限制
-
-### 信号测试
-使用 `await` 的信号测试（如 `test_signal_emission` 和 `test_objective_signals`）在命令行模式下可能不可靠，因为：
-- 命令行模式下场景树的帧处理可能不完整
-- `await Engine.get_main_loop().process_frame` 可能不会按预期工作
-
-**解决方案**：在 Godot 编辑器中运行场景模式测试以验证信号功能。
-
-### TaskManager 单例警告
-在集成测试中可能会看到 "TaskManager instance already exists!" 警告。这是正常的，因为每个测试都会创建新的 TaskManager 实例。这不影响测试结果。
-
-## 编写新测试
-
-创建新测试文件的模板：
-
-```gdscript
-## 你的测试名称
-extends TestFramework
-
-func _init() -> void:
-	super._init("你的测试名称")
-
-## 运行所有测试
-func run_all_tests() -> void:
-	test_something()
-	test_another_thing()
-	print_report()
-
-## 测试: 某个功能
-func test_something() -> void:
-	start_test("某个功能")
-	
-	# 测试代码
-	var result = do_something()
-	
-	# 断言
-	var passed = assert_equal(result, expected_value, "结果应该正确")
-	
-	end_test(passed)
-```
-
-## 测试报告
-
-测试会生成详细的报告，包括：
-- 每个测试套件的通过/失败统计
-- 每个测试的执行时间
-- 失败测试的错误信息
-- 总体统计和成功率
-
-Quest 系统测试报告保存在：`tests/quest/test_report.txt`
+Items 模块还覆盖物品字段校验、JSON 往返、存档字典隔离、重复背包格子和身份、失败保留金币与重量、装备错槽拒绝、重复恢复不叠加属性、损坏装备、重算套装件数、恢复通知与同步重入隔离。

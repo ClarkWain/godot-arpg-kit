@@ -23,6 +23,7 @@ Equipment 系统是 2D ARPG 游戏的装备管理模块，提供了完整的装�
 var equipment_manager = EquipmentManager.new()
 equipment_manager.stats_component = player_stats  # 连接属性组件
 equipment_manager.inventory = player_inventory    # 连接背包组件
+player_inventory.equipment_manager = equipment_manager  # 背包入口使用同一个管理器
 add_child(equipment_manager)
 ```
 
@@ -55,6 +56,16 @@ if equipment_manager.equip_from_inventory(2):  # 索引从0开始
 else:
     print("装备失败")
 ```
+
+### 转移与失败回滚
+
+推荐 `equip_from_inventory(index)` 或配置双向引用后的 `inventory.equip_item(index)`；两个入口使用同一事务。直接 `equip()` 收到当前背包中的实例时也会转为转移操作，不会让实例同时存在于背包和装备槽。
+
+满格换装会先暂时移出新装备，为旧装备腾出格子。若旧装备不能入包、等级不足或实际入包被拒绝，新装备原位恢复，旧装备与属性保留，不发送中间背包移除通知。成功通知在背包与装备提交后派发；转移与耐久通知中的同步重入操作会被拒绝。
+
+默认 `unequip(slot)` 必须有有效背包且实际入包成功，缺少背包或入包失败时返回 `false` 并保留装备。需要把装备交给掉落/交易等系统时，先保存 `get_equipped(slot)` 的引用，再显式调用 `unequip(slot, false)`，由调用方接管物品。
+
+同一实例不能重复入包或重复装备。`equip(item, false)` 禁用自动换装；`equip_from_inventory(index, false)` 支持相同选项。仅实现 `equip(item)` 的自定义 Node 仍走旧适配路径；需要完整事务保障时使用实际 `EquipmentManager`。
 
 ### 卸下所有装备
 ```gdscript
@@ -149,7 +160,7 @@ func _on_set_deactivated(set_id: String):
 
 ## 属性加成管理
 
-装备系统会自动应用/移除装备的属性加成：
+装备系统会自动应用/移除装备的属性加成。每个角色使用独立的运行时修正器，不修改共享的 `EquipmentData.stat_modifiers` 模板；耐久耗尽时移除加成，修理到可用状态时恢复一次。已损坏装备即使装入槽位也不提供属性。耐久与损坏通知派发时属性状态已经更新。
 
 ```gdscript
 # 装备时自动应用属性加成
@@ -239,7 +250,8 @@ var file = FileAccess.open("user://player_save.save", FileAccess.READ)
 var save_data = file.get_var()
 
 # 恢复装备状态 (需要物品数据库)
-equipment_manager.from_dict(save_data.equipment, item_database)
+if not equipment_manager.from_dict(save_data.equipment, item_database):
+    print("装备恢复失败，当前装备与属性保留")
 ```
 
 ## 装备数据创建
@@ -453,3 +465,13 @@ class EquipmentAppearance:
 - 装备损坏不会自动卸下，可选择保留或移除
 - 序列化时需要提供物品数据库进行反序列化
 - 属性加成会自动应用到 StatsComponent，无需手动管理
+
+## 恢复结果与通知
+
+`from_dict()` 返回 `bool`。未知物品、非法物品字段、非装备物品、未知槽位、物品定义与保存槽位不匹配或重复实例 ID 时，返回 `false`，保留当前装备及属性，不发送通知。
+
+成功时直接恢复槽位，重算套装件数，忽略存档中的派生 `set_pieces`。旧装备修正器被移除，新修正器按槽位应用一次；其他来源修正器保留，损坏装备不提供属性。保存的绑定状态和耐久保留；恢复不重新执行装备等级、绑定或背包转移规则，以支持角色数据的加载顺序和定义变化。
+
+恢复不发送 `equipment_equipped`、`equipment_unequipped`、`equipment_changed` 或套装激活/失效事件，避免读档触发任务进度。UI 应监听 `equipment_restored` 重绘槽位。属性组件的 `modifiers_changed` 在最终状态提交后发送一次；原先已被屏蔽的属性信号仍保持屏蔽。恢复通知期间，装备修改和嵌套恢复被拒绝。
+
+单次装备恢复独立于背包和任务，不构成整个角色的联合事务。调用方应检查跨模块实例 ID 重复，并在所有模块成功后显示角色。成功恢复后通过管理器重新获取物品实例。

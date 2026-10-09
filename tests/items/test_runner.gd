@@ -11,7 +11,7 @@ func _ready() -> void:
 	print("=== 物品系统测试开始 ===")
 
 	# 运行所有测试
-	run_all_item_tests()
+	await run_all_item_tests()
 
 	print("=== 物品系统测试完成 ===")
 	
@@ -42,6 +42,9 @@ func run_all_item_tests() -> void:
 	print("\n--- 运行WeaponData测试 ---")
 	test_weapon_data.run_all_tests()
 
+	var test_runtime = load("res://tests/items/test_equipment_runtime.gd").new()
+	await test_runtime.run_all_tests()
+
 	# 输出汇总报告
 	print("\n=== 测试汇总报告 ===")
 	print("ItemData测试: %s" % test_item_data.get_test_summary())
@@ -55,7 +58,7 @@ func run_all_item_tests() -> void:
 	var total_passed = 0
 	var total_failed = 0
 
-	var all_tests = [test_item_data, test_item_instance, test_equipment_data, test_consumable_data, test_weapon_data]
+	var all_tests = [test_item_data, test_item_instance, test_equipment_data, test_consumable_data, test_weapon_data, test_runtime]
 	for test in all_tests:
 		total_tests += test.total_tests
 		total_passed += test.passed_tests

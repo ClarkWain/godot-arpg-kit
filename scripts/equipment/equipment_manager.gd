@@ -6,6 +6,7 @@ extends Node
 ## 支持套装检测、耐久度消耗等功能
 
 ## ========== 信号 ==========
+signal equipment_restored
 signal equipment_changed(slot: EquipmentData.EquipSlot, item: ItemInstance)
 signal equipment_equipped(slot: EquipmentData.EquipSlot, item: ItemInstance)
 signal equipment_unequipped(slot: EquipmentData.EquipSlot, item: ItemInstance)
@@ -36,6 +37,8 @@ var equipped_items: Dictionary[EquipmentData.EquipSlot, ItemInstance] = {}
 var set_pieces: Dictionary = {}
 # 应用的修正器追踪 {EquipSlot: Array[StatModifier]}
 var applied_modifiers: Dictionary[EquipmentData.EquipSlot, Array] = {}
+var _transaction_active: bool = false
+var _pending_events: Array = []
 
 
 func _ready():
@@ -49,6 +52,20 @@ func _ready():
 
 ## 装备物品
 func equip(item: ItemInstance, auto_swap: bool = true) -> bool:
+	if _transaction_active or item in get_all_equipped():
+		return false
+	if inventory:
+		var index := inventory.slots.find(item)
+		if index >= 0:
+			return equip_from_inventory(index, auto_swap)
+	_transaction_active = true
+	var result := _equip(item, auto_swap)
+	_flush_events()
+	_transaction_active = false
+	return result
+
+
+func _equip(item: ItemInstance, auto_swap: bool) -> bool:
 	if not item or not item.item_data is EquipmentData:
 		push_warning("EquipmentManager: 尝试装备非装备物品")
 		return false
@@ -71,14 +88,15 @@ func equip(item: ItemInstance, auto_swap: bool = true) -> bool:
 			return false
 		
 		# 先卸下旧装备
-		if not unequip(slot):
+		if not _unequip(slot, true):
 			return false
 	
 	# 装备新物品
 	equipped_items[slot] = item
 	
 	# 应用属性加成
-	_apply_item_modifiers(item, slot)
+	if not item.is_broken():
+		_apply_item_modifiers(item, slot)
 	
 	# 更新套装
 	_update_set_bonuses(equip_data.set_bonus_id, 1)
@@ -87,40 +105,49 @@ func equip(item: ItemInstance, auto_swap: bool = true) -> bool:
 	if equip_data.bind_on_equip:
 		item.is_bound = true
 	
-	equipment_equipped.emit(slot, item)
-	equipment_changed.emit(slot, item)
+	_notify(&"equipment_equipped", [slot, item])
+	_notify(&"equipment_changed", [slot, item])
 	
 	return true
 
 
 ## 卸下装备
 func unequip(slot: EquipmentData.EquipSlot, to_inventory: bool = true) -> bool:
-	var item = equipped_items[slot]
+	if _transaction_active:
+		return false
+	_transaction_active = true
+	var result := _unequip(slot, to_inventory)
+	_flush_events()
+	_transaction_active = false
+	return result
+
+
+func _unequip(slot: EquipmentData.EquipSlot, to_inventory: bool) -> bool:
+	var item := get_equipped(slot)
 	if not item:
 		return false
-	
-	# 检查背包是否有空间
-	if to_inventory and inventory and not inventory.has_space_for(item):
-		push_warning("EquipmentManager: 背包已满，无法卸下装备")
-		return false
-	
-	# 移除属性加成
-	_remove_item_modifiers(slot)
-	
-	# 更新套装
-	var equip_data = item.item_data as EquipmentData
-	_update_set_bonuses(equip_data.set_bonus_id, -1)
-	
-	# 移除装备
+	var inventory_was_blocked := false
+	var target_slot := -1
+	if to_inventory:
+		if not inventory or not inventory.has_space_for(item):
+			return false
+		inventory_was_blocked = inventory.is_blocking_signals()
+		inventory.set_block_signals(true)
+		var accepted := inventory.add_item(item)
+		inventory.set_block_signals(inventory_was_blocked)
+		if not accepted:
+			return false
+		target_slot = inventory.slots.find(item)
+	# 只有实际入包成功后才移除装备与属性。
 	equipped_items[slot] = null
-	
-	# 放入背包
-	if to_inventory and inventory:
-		inventory.add_item(item)
-	
-	equipment_unequipped.emit(slot, item)
-	equipment_changed.emit(slot, null)
-	
+	_remove_item_modifiers(slot)
+	var equip_data := item.item_data as EquipmentData
+	_update_set_bonuses(equip_data.set_bonus_id, -1)
+	if to_inventory and not inventory_was_blocked:
+		inventory.item_added.emit(item, target_slot)
+		inventory.slot_changed.emit(target_slot)
+	_notify(&"equipment_unequipped", [slot, item])
+	_notify(&"equipment_changed", [slot, null])
 	return true
 
 
@@ -137,26 +164,50 @@ func unequip_all(to_inventory: bool = true) -> Array:
 
 
 ## 快速装备（从背包直接装备）
-func equip_from_inventory(slot_index: int) -> bool:
-	if not inventory:
+func equip_from_inventory(slot_index: int, auto_swap: bool = true) -> bool:
+	if _transaction_active or not inventory:
 		return false
-	
-	var item = inventory.get_item(slot_index)
-	if not item or not item.item_data is EquipmentData:
+	var item := inventory.get_item(slot_index)
+	if not item or not item.item_data is EquipmentData or item in get_all_equipped():
 		return false
-	
-	# 从背包移除
-	var removed_item = inventory.remove_item(slot_index)
-	if not removed_item:
-		return false
-	
-	# 尝试装备
-	if equip(removed_item):
-		return true
+	_transaction_active = true
+	# 隐藏中间移除通知，防止观察者抢占临时空格子，导致回滚丢失。
+	var was_blocked := inventory.is_blocking_signals()
+	inventory.set_block_signals(true)
+	var previous := get_equipped((item.item_data as EquipmentData).equip_slot)
+	var removed := inventory.remove_item(slot_index)
+	var succeeded := _equip(removed, auto_swap)
+	if not succeeded:
+		# 恢复原格子，不经过可能因负重/业务限制失败的 add_item。
+		inventory.slots[slot_index] = removed
+		inventory._update_weight()
+	inventory.set_block_signals(was_blocked)
+	if succeeded and not was_blocked:
+		var returned_slot := inventory.slots.find(previous) if previous else -1
+		inventory.item_removed.emit(removed, slot_index)
+		if returned_slot >= 0:
+			inventory.item_added.emit(previous, returned_slot)
+			if returned_slot != slot_index:
+				inventory.slot_changed.emit(returned_slot)
+		inventory.slot_changed.emit(slot_index)
+	_flush_events()
+	_transaction_active = false
+	return succeeded
+
+
+## 转移中的通知排队，背包信号恢复后才派发，避免隐藏监听器的正常操作。
+func _notify(signal_name: StringName, args: Array) -> void:
+	if _transaction_active:
+		_pending_events.append([signal_name, args])
 	else:
-		# 装备失败，放回背包
-		inventory.add_item(removed_item)
-		return false
+		callv("emit_signal", [signal_name] + args)
+
+
+func _flush_events() -> void:
+	var events := _pending_events
+	_pending_events = []
+	for event in events:
+		callv("emit_signal", [event[0]] + event[1])
 
 
 ## ========== 查询方法 ==========
@@ -237,6 +288,8 @@ func consume_durability_on_hit() -> void:
 
 ## 消耗指定槽位装备的耐久度
 func consume_durability(slot: EquipmentData.EquipSlot, amount: int = 1) -> void:
+	if _transaction_active:
+		return
 	var item = equipped_items.get(slot, null)
 	if not item:
 		return
@@ -245,16 +298,20 @@ func consume_durability(slot: EquipmentData.EquipSlot, amount: int = 1) -> void:
 	if not equip_data.has_durability:
 		return
 	
+	_transaction_active = true
+	var was_broken: bool = item.is_broken()
 	item.reduce_durability(amount)
-	durability_changed.emit(slot, item.current_durability, equip_data.max_durability)
-	
-	# 检查是否损坏
-	if item.is_broken():
+	if not was_broken and item.is_broken():
 		_handle_broken_equipment(slot, item)
+	_notify(&"durability_changed", [slot, item.current_durability, equip_data.max_durability])
+	_flush_events()
+	_transaction_active = false
 
 
 ## 修理装备
 func repair_equipment(slot: EquipmentData.EquipSlot, full_repair: bool = true) -> int:
+	if _transaction_active:
+		return 0
 	var item = equipped_items.get(slot, null)
 	if not item:
 		return 0
@@ -263,6 +320,8 @@ func repair_equipment(slot: EquipmentData.EquipSlot, full_repair: bool = true) -
 	if not equip_data.has_durability:
 		return 0
 	
+	_transaction_active = true
+	var was_broken: bool = item.is_broken()
 	var old_durability = item.current_durability
 	
 	if full_repair:
@@ -270,9 +329,12 @@ func repair_equipment(slot: EquipmentData.EquipSlot, full_repair: bool = true) -
 	else:
 		item.repair(equip_data.max_durability / 2)  # 修理一半
 	
+	if was_broken and not item.is_broken():
+		_apply_item_modifiers(item, slot)
 	var repaired = item.current_durability - old_durability
-	durability_changed.emit(slot, item.current_durability, equip_data.max_durability)
-	
+	_notify(&"durability_changed", [slot, item.current_durability, equip_data.max_durability])
+	_flush_events()
+	_transaction_active = false
 	return repaired
 
 
@@ -301,7 +363,9 @@ func _apply_item_modifiers(item: ItemInstance, slot: EquipmentData.EquipSlot) ->
 	var modifiers = item.get_all_modifiers()
 	applied_modifiers[slot] = []
 	
-	for mod in modifiers:
+	for template in modifiers:
+		var mod := template.duplicate(true) as StatModifier
+		# 每个角色使用独立的修正器，不修改共享装备资源。
 		# 设置来源为装备槽位
 		mod.source_id = "equipment_%s" % EquipmentData.EquipSlot.keys()[slot]
 		stats_component.add_modifier(mod)
@@ -347,7 +411,7 @@ func _check_set_activation(set_id: String, count: int) -> void:
 	var thresholds = [2, 4, 6]
 	
 	if count in thresholds:
-		set_bonus_activated.emit(set_id, count)
+		_notify(&"set_bonus_activated", [set_id, count])
 		# TODO: 应用套装加成效果
 
 
@@ -357,7 +421,7 @@ func _check_set_deactivation(set_id: String, count: int) -> void:
 	
 	# 检查是否跌破某个阈值
 	if (count + 1) in thresholds and count not in thresholds:
-		set_bonus_deactivated.emit(set_id)
+		_notify(&"set_bonus_deactivated", [set_id])
 		# TODO: 移除套装加成效果
 
 
@@ -365,13 +429,13 @@ func _check_set_deactivation(set_id: String, count: int) -> void:
 
 ## 处理装备损坏
 func _handle_broken_equipment(slot: EquipmentData.EquipSlot, item: ItemInstance) -> void:
-	equipment_broken.emit(slot, item)
 	
 	# 可选: 自动卸下损坏的装备
 	# unequip(slot, true)
 	
 	# 或者: 保留装备但移除属性加成
 	_remove_item_modifiers(slot)
+	_notify(&"equipment_broken", [slot, item])
 
 
 ## ========== 序列化 ==========
@@ -386,28 +450,54 @@ func to_dict() -> Dictionary:
 	
 	return {
 		"equipped": equipped_data,
-		"set_pieces": set_pieces
+		"set_pieces": set_pieces.duplicate(true)
 	}
 
 
 ## 从字典加载
-func from_dict(data: Dictionary, item_database: Dictionary) -> void:
-	# 先卸下所有装备
-	unequip_all(false)
-	
-	# 加载装备
-	var equipped_data = data.get("equipped", {})
-	for slot_name in equipped_data.keys():
-		var slot = EquipmentData.EquipSlot.get(slot_name)
-		if slot == null:
-			continue
-		
-		var item = ItemInstance.from_dict(equipped_data[slot_name], item_database)
-		if item:
-			equip(item, false)
-	
-	# 恢复套装计数
-	set_pieces = data.get("set_pieces", {})
+func from_dict(data: Dictionary, item_database: Dictionary) -> bool:
+	if _transaction_active:
+		return false
+	var entries = data.get("equipped", {})
+	if not entries is Dictionary:
+		return false
+	var restored: Dictionary[EquipmentData.EquipSlot, ItemInstance] = {}
+	var counts: Dictionary = {}
+	var ids: Dictionary = {}
+	for slot in EquipmentData.EquipSlot.values():
+		restored[slot] = null
+	for slot_name in entries:
+		if not slot_name is String or not EquipmentData.EquipSlot.has(slot_name) or not entries[slot_name] is Dictionary:
+			return false
+		var slot: EquipmentData.EquipSlot = EquipmentData.EquipSlot[slot_name]
+		var item = ItemInstance.from_dict(entries[slot_name], item_database)
+		if not item or not item.item_data is EquipmentData or item.item_data.equip_slot != slot or ids.has(item.instance_id):
+			return false
+		ids[item.instance_id] = true
+		restored[slot] = item
+		var set_id: String = item.item_data.set_bonus_id
+		if not set_id.is_empty():
+			counts[set_id] = counts.get(set_id, 0) + 1
+	# Restore state directly: no transfer, binding, level check or gameplay events.
+	_transaction_active = true
+	var stats_was_blocked: bool = stats_component.is_blocking_signals() if stats_component else false
+	if stats_component:
+		stats_component.set_block_signals(true)
+	for slot in EquipmentData.EquipSlot.values():
+		_remove_item_modifiers(slot)
+	equipped_items = restored
+	set_pieces = counts
+	for slot in equipped_items:
+		var item: ItemInstance = equipped_items[slot]
+		if item and not item.is_broken():
+			_apply_item_modifiers(item, slot)
+	if stats_component:
+		stats_component.set_block_signals(stats_was_blocked)
+		if not stats_was_blocked:
+			stats_component.modifiers_changed.emit()
+	equipment_restored.emit()
+	_transaction_active = false
+	return true
 
 
 ## ========== 调试工具 ==========

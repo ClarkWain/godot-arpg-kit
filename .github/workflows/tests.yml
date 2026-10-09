@@ -2,85 +2,57 @@ name: Tests
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, 'release/**']
   pull_request:
     branches: [master, main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    name: Tests (Godot ${{ matrix.godot }} · ${{ matrix.suite.name }})
+    name: Tests (Godot ${{ matrix.godot }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     strategy:
       fail-fast: false
       matrix:
-        godot: ['4.5']
-        suite:
-          - name: combat
-            scene: res://tests/combat/combat_test_scene.tscn
-          - name: items
-            scene: res://tests/items/item_system_test_scene.tscn
-          - name: loot
-            scene: res://tests/loot/loot_system_test_scene.tscn
-          - name: quest
-            scene: res://tests/quest/test_scene.tscn
-          - name: stats
-            scene: res://tests/stats/test_scene.tscn
-
+        godot: ['4.5', '4.6.3']
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # Godot 4 headless 需要一些基础的 X 库才能启动（即使不显示窗口）
-      - name: Install Godot dependencies
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Test runner failure handling
+        run: python3 -m unittest discover -s tools/tests -v
+      - name: Install Godot runtime dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             libx11-6 libxcursor1 libxi6 libxinerama1 libxrandr2 libxrender1 \
-            libgl1 libglx-mesa0 libasound2t64 libpulse0 || \
-          sudo apt-get install -y --no-install-recommends \
-            libx11-6 libxcursor1 libxi6 libxinerama1 libxrandr2 libxrender1 \
-            libgl1 libglx-mesa0 libasound2 libpulse0
-
-      # 使用官方 Godot binary，比 barichello/godot-ci docker image 更轻量、更稳定
-      - name: Download Godot ${{ matrix.godot }}
+            libgl1 libglx-mesa0 libasound2t64 libpulse0
+      - name: Download and verify official Godot
         env:
           GODOT_VERSION: ${{ matrix.godot }}
         run: |
-          # 4.5.stable 官方下载链接
-          curl -fsSL "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o godot.zip
-          unzip -q godot.zip
-          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
-          chmod +x /usr/local/bin/godot
-          godot --version
-
-      # Godot 4 项目首次使用需要生成 .godot/imported/ 缓存，否则
-      # test_runner 里 `load("res://xxx.gd").new()` 会抛
-      # "Nonexistent function 'new' in base 'GDScript'"。
-      # `--import` 会静默做导入然后退出（Godot 4.5 支持）。
-      - name: Import project (generate .godot cache)
-        run: |
-          godot --headless --import 2>&1 | tail -20 || true
-          # 上面失败也不阻塞——只要 .godot/ 目录被创建即可
-          ls -la .godot/ || echo ".godot/ still missing, will retry via --editor --quit"
-          # 双保险：老版本 Godot / 部分环境需要 --editor --quit 才能生成
-          if [ ! -d .godot/imported ]; then
-            timeout 60 godot --headless --editor --quit 2>&1 | tail -20 || true
-          fi
-          ls -la .godot/imported/ | head -5 || echo "(no imported dir; some projects have no importable resources)"
-
-      - name: Run ${{ matrix.suite.name }} suite
-        run: |
-          set -o pipefail
-          godot --headless --path . '${{ matrix.suite.scene }}' 2>&1 | tee /tmp/test_output.log
-          # test_runner 在结尾打印 "[RESULT] suite=<n> passed=P failed=F total=T"，
-          # 我们据此判断成败（Godot 进程退出码在 headless 下会因资源泄漏 ERROR 而波动，与测试无关）
-          if grep -qE '\[RESULT\] suite=[a-z]+ passed=[0-9]+ failed=0 total=[1-9]' /tmp/test_output.log; then
-            echo "✓ ${{ matrix.suite.name }} suite passed"
-            exit 0
-          fi
-          echo "✗ ${{ matrix.suite.name }} suite failed or no [RESULT] line found"
-          exit 1
-        env:
-          PYTHONIOENCODING: utf-8
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/godot"
+          cd "$RUNNER_TEMP/godot"
+          archive="Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          release="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl --fail --show-error --location --retry 3 "$release/$archive" -o "$archive"
+          curl --fail --show-error --location --retry 3 "$release/SHA512-SUMS.txt" -o SHA512-SUMS.txt
+          awk -v file="$archive" '$2 == file {print; found=1} END {if (!found) exit 1}' SHA512-SUMS.txt > selected.sha512
+          sha512sum --check selected.sha512
+          unzip -q "$archive"
+          chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+      - name: Import and run all modules
+        run: python3 tools/run_tests.py
+      - name: Preserve current-run logs and summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-godot-${{ matrix.godot }}
+          path: .godot/test-results/
+          if-no-files-found: warn

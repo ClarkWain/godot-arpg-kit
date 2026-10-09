@@ -81,12 +81,20 @@ func _ready():
 	if not loot_generator:
 		loot_generator = _find_loot_generator()
 	
-	# 连接死亡信号（假设敌人有一个死亡信号）
+	# 兼容角色转发死亡信号与组件化角色，只订阅一个来源以免重复掉落。
 	var parent = get_parent()
 	if parent.has_signal("died"):
 		parent.died.connect(_on_enemy_died)
 	elif parent.has_signal("health_depleted"):
 		parent.health_depleted.connect(_on_enemy_died)
+	else:
+		var combat = parent.get_node_or_null("CombatComponent") as CombatComponent
+		if combat:
+			combat.died.connect(_on_enemy_died)
+		else:
+			var stats = _stats if _stats else parent.get_node_or_null("StatsComponent") as StatsComponent
+			if stats:
+				stats.health_depleted.connect(_on_enemy_died)
 
 
 ## ========== 核心方法 ==========
@@ -269,9 +277,9 @@ func _find_node_recursive(node: Node, node_name: String) -> Node:
 
 ## ========== 信号处理 ==========
 
-func _on_enemy_died():
+func _on_enemy_died(killer: Node = null):
 	# 在敌人死亡时自动生成掉落
-	generate_and_spawn_loot(_killer)
+	generate_and_spawn_loot(killer as Node2D if killer else _killer)
 
 
 ## ========== 公共接口 ==========

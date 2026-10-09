@@ -6,6 +6,7 @@ extends Node
 ## 适用于 2D ARPG 的最佳实践设计
 
 ## ========== 信号 ==========
+## item.stack_count 表示本次实际入包数量；堆叠时负载可能是快照。
 signal item_added(item: ItemInstance, slot_index: int)
 signal item_removed(item: ItemInstance, slot_index: int)
 signal item_used(item: ItemInstance)
@@ -13,6 +14,8 @@ signal inventory_full
 signal weight_exceeded
 signal slot_changed(slot_index: int)
 signal gold_changed(new_amount: int)
+## 存档替换完成；不触发拾取/使用事件。
+signal inventory_restored
 
 ## ========== 导出属性 ==========
 @export_group("Capacity")
@@ -40,6 +43,7 @@ signal gold_changed(new_amount: int)
 ## ========== 内部数据 ==========
 var slots: Array[ItemInstance] = []  # 背包格子数组
 var gold: int = 0  # 金币数量
+var _restore_active: bool = false
 var _current_weight: float = 0.0  # 当前总重量
 
 
@@ -56,7 +60,7 @@ func _ready():
 
 ## 尝试添加物品到背包
 func add_item(item: ItemInstance, preferred_slot: int = -1) -> bool:
-	if not item:
+	if not item or item in slots:
 		return false
 	
 	# 检查重量限制
@@ -65,7 +69,9 @@ func add_item(item: ItemInstance, preferred_slot: int = -1) -> bool:
 			weight_exceeded.emit()
 			return false
 	
-	var remaining_stack = item.stack_count
+	var incoming_count := item.stack_count
+	var added_snapshot := item.copy()
+	var remaining_stack = incoming_count
 	
 	# 步骤1: 优先尝试堆叠到已有物品
 	if auto_stack and prefer_existing_stacks:
@@ -83,13 +89,11 @@ func add_item(item: ItemInstance, preferred_slot: int = -1) -> bool:
 	if target_slot < 0:
 		# 没有空格子且无法完全堆叠
 		if remaining_stack < item.stack_count:
-			# 部分添加成功：至少有一部分堆叠到已有格子上。
-			# 修复历史 BUG：旧实现只 return false 不发信号，UI 拿不到
-			# "已入包一部分" 的通知；这里补发 item_added(-1) 与
-			# inventory_full，让外部可以准确区分"部分入包"和"完全失败"。
+			# false 时输入实例保留余量，通知只报告已入包的部分。
 			item.stack_count = remaining_stack
+			added_snapshot.stack_count = incoming_count - remaining_stack
 			_update_weight()
-			item_added.emit(item, -1)  # -1 表示堆叠到已有格子（无法定位单一 slot）
+			item_added.emit(added_snapshot, -1)
 			inventory_full.emit()
 			return false
 		else:
@@ -106,7 +110,7 @@ func add_item(item: ItemInstance, preferred_slot: int = -1) -> bool:
 		if new_item:
 			slots[target_slot] = new_item
 	
-	item_added.emit(item, target_slot)
+	item_added.emit(item if item.stack_count == incoming_count else added_snapshot, target_slot)
 	slot_changed.emit(target_slot)
 	_update_weight()
 	
@@ -339,9 +343,9 @@ func _find_status_effect_manager(target: Node) -> Node:
 
 ## 装备物品
 ##
-## 若 `equipment_manager` 已配置且暴露 `equip(item)` 方法，则内部完成
-## 事务化装备：`remove_item(slot) -> equipment_manager.equip(item)`；
-## 装备失败时把物品放回背包，返回 null。**这是推荐路径**。
+## 实际 EquipmentManager 使用统一的 equip_from_inventory 事务入口，
+## 并要求其 inventory 指向当前背包。失败时恢复原格子，不暴露中间移除通知。
+## 仅暴露 equip(item) 的自定义 Node 保留旧适配路径，不保证相同的通知隔离。
 ##
 ## 若 `equipment_manager` 未配置，则保留旧行为——仅从背包移除物品并
 ## 返回给调用方，由调用方负责后续装备/归还，否则物品会泄漏。
@@ -354,6 +358,12 @@ func equip_item(slot_index: int) -> ItemInstance:
 	if not item or not item.item_data is EquipmentData:
 		return null
 	
+	if equipment_manager is EquipmentManager:
+		if equipment_manager.inventory != self:
+			push_warning("InventoryManager.equip_item: EquipmentManager.inventory 必须指向当前背包")
+			return null
+		return item if equipment_manager.equip_from_inventory(slot_index) else null
+
 	# 事务化装备路径
 	if equipment_manager and equipment_manager.has_method("equip"):
 		var removed = remove_item(slot_index)
@@ -623,27 +633,41 @@ func to_dict() -> Dictionary:
 
 
 ## 从字典加载
-func from_dict(data: Dictionary, item_database: Dictionary) -> void:
-	slot_count = data.get("slot_count", 20)
-	gold = data.get("gold", 0)
-	
-	# 重新初始化格子
-	slots.clear()
-	slots.resize(slot_count)
-	for i in range(slot_count):
-		slots[i] = null
-	
-	# 加载物品
-	var items_data = data.get("items", [])
-	for item_data in items_data:
-		var slot = item_data.get("slot", -1)
-		if slot >= 0 and slot < slot_count:
-			var item = ItemInstance.from_dict(item_data.get("item"), item_database)
-			if item:
-				slots[slot] = item
-	
+func from_dict(data: Dictionary, item_database: Dictionary) -> bool:
+	if _restore_active:
+		return false
+	var capacity = data.get("slot_count", 20)
+	var saved_gold = data.get("gold", 0)
+	# Bound allocation before resizing a potentially untrusted save.
+	if not ItemInstance.valid_saved_integer(capacity, 1, 100000) or not ItemInstance.valid_saved_integer(saved_gold, 0, 9007199254740991):
+		return false
+	var entries = data.get("items", [])
+	if not entries is Array:
+		return false
+	var restored: Array[ItemInstance] = []
+	restored.resize(int(capacity))
+	var ids: Dictionary = {}
+	for entry in entries:
+		if not entry is Dictionary or not entry.get("item") is Dictionary:
+			return false
+		var index = entry.get("slot", -1)
+		if not ItemInstance.valid_saved_integer(index, 0, int(capacity) - 1) or restored[int(index)] != null:
+			return false
+		var item = ItemInstance.from_dict(entry.item, item_database)
+		if not item or ids.has(item.instance_id):
+			return false
+		ids[item.instance_id] = true
+		restored[int(index)] = item
+	# Restore saved contents even if current gameplay weight limits changed.
+	_restore_active = true
+	slot_count = int(capacity)
+	gold = int(saved_gold)
+	slots = restored
 	_update_weight()
 	gold_changed.emit(gold)
+	inventory_restored.emit()
+	_restore_active = false
+	return true
 
 
 ## ========== 内部方法 ==========

@@ -124,10 +124,10 @@ func save_report_to_file() -> void:
 		report += "\n"
 	
 	# 保存到文件
-	var file = FileAccess.open("res://tests/quest/test_report.txt", FileAccess.WRITE)
+	var file = FileAccess.open("user://quest_test_report.txt", FileAccess.WRITE)
 	if file:
 		file.store_string(report)
 		file.close()
-		print("\n测试报告已保存到: res://tests/quest/test_report.txt")
+		print("\n测试报告已保存到: user://quest_test_report.txt")
 	else:
 		push_error("无法保存测试报告")

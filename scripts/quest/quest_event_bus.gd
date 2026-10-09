@@ -91,21 +91,7 @@ func _ready() -> void:
 
 ## 连接到任务管理器
 func _connect_to_task_manager() -> void:
-	# 等待 TaskManager 可能初始化
-	await get_tree().process_frame
-
-	# 优先使用 TaskManager.instance 单例引用
-	# 优先使用单例实例, 避免路径硬编码
-	var task_manager = null
-	if TaskManager and TaskManager.instance != null:
-		task_manager = TaskManager.instance
-	else:
-		task_manager = get_node_or_null("/root/TaskManager")
-	
-	if not task_manager:
-		push_warning("TaskManager not found; QuestEventBus will not update tasks")
-		return
-	
+	# 始终订阅事件；管理器可在后续场景中创建，每次事件动态解析。
 	# 连接所有事件到专用处理函数
 	enemy_killed.connect(_on_enemy_killed)
 	item_collected.connect(_on_item_collected)
@@ -118,7 +104,7 @@ func _connect_to_task_manager() -> void:
 
 ## 获取任务管理器实例
 func _get_task_manager() -> TaskManager:
-	if typeof(TaskManager) != TYPE_NIL and TaskManager.instance:
+	if is_instance_valid(TaskManager.instance):
 		return TaskManager.instance
 	
 	# 尝试在场景树中查找

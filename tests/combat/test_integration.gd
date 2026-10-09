@@ -14,7 +14,8 @@ func run_all_tests() -> void:
 	test_dot_kills_enemy()
 	test_shield_blocks_damage()
 	test_equipment_integration()
-	test_quest_event_integration()
+	await test_quest_event_integration()
+	await test_attack_loot_equipment_quest_flow()
 	
 	print_report()
 
@@ -536,58 +537,164 @@ func test_equipment_integration() -> void:
 	target.free()
 	end_test(passed)
 
-## 测试: 任务事件集成
+## 管理器在 autoload 启动后创建、释放和重建，事件仍应准确转发。
 func test_quest_event_integration() -> void:
-	start_test("任务事件集成")
-	
-	# 创建实体
-	var attacker = Node2D.new()
-	attacker.name = "Player"
-	var attacker_stats = StatsComponent.new()
-	attacker_stats.name = "StatsComponent"
-	var attacker_base = StatsData.new()
-	attacker_base.strength = 0
-	attacker_base.agility = 0
-	attacker_base.intelligence = 0
-	attacker_base.vitality = 0
-	attacker_base.luck = 0
-	attacker_base.physical_damage = 10.0  # 设置基础攻击力
-	attacker_stats.base_stats = attacker_base
-	attacker.add_child(attacker_stats)
-	
-	
-	var attacker_combat = CombatComponent.new()
-	attacker_combat.name = "CombatComponent"
-	attacker.add_child(attacker_combat)
-	
-	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
-	attacker_stats._ready()
-	attacker_combat._ready()
-	
-	var enemy = Node2D.new()
-	enemy.name = "Goblin"
-	var enemy_stats = StatsComponent.new()
-	enemy_stats.name = "StatsComponent"
-	var enemy_base = StatsData.new()
-	enemy_base.max_health = 50.0
-	enemy_base.armor = 0.0
-	enemy_stats.base_stats = enemy_base
-	enemy.add_child(enemy_stats)
-	
-	var enemy_combat = CombatComponent.new()
-	enemy_combat.name = "CombatComponent"
-	enemy.add_child(enemy_combat)
-	
-	# 统一调用 _read() 函数,其中有依赖关系,否则有问题
-	enemy_stats._ready()
-	enemy_combat._ready()
-	
-	# 攻击
-	attacker_combat.attack(enemy, 30.0)
-	
-	# 这个测试不再依赖QuestEventBus
-	var passed = true
-	
-	attacker.free()
-	enemy.free()
+	start_test("延迟创建和重建任务管理器")
+	var tree = Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	await tree.process_frame
+	var passed := true
+	QuestEventBus.item_collected.emit("test_token", 1)
+	for i in range(2):
+		var manager := TaskManager.new()
+		tree.current_scene.add_child(manager)
+		var task := _flow_task("late_task", [["collect_item", "test_token", 2]])
+		passed = assert_true(manager.register_task(task), "注册任务") and passed
+		passed = assert_true(manager.accept_task(task.task_id), "接取任务") and passed
+		QuestEventBus.item_collected.emit("unrelated", 1)
+		QuestEventBus.item_collected.emit("test_token", 1)
+		var instance := manager.get_task_instance(task.task_id)
+		passed = assert_equal(instance.objectives[0].current_count, 1,
+			"只处理匹配事件一次") and passed
+		passed = assert_equal(instance.state, TaskState.State.ACTIVE, "尚未完成") and passed
+		QuestEventBus.item_collected.emit("test_token", 1)
+		passed = assert_true(manager.is_task_completed(task.task_id), "第二次事件完成任务") and passed
+		manager.free()
+		QuestEventBus.item_collected.emit("test_token", 1)
+	end_test(passed)
+
+
+func _flow_task(id: String, targets: Array) -> TaskData:
+	var task := TaskData.new()
+	task.task_id = id
+	task.task_name = id
+	for target in targets:
+		var objective := CountObjective.new()
+		objective.target_type = StringName(target[0])
+		objective.target_id = StringName(target[1])
+		objective.required_count = target[2]
+		task.objectives.append(objective)
+	return task
+
+
+func _flow_actor(health: float) -> Node2D:
+	var actor := Node2D.new()
+	var stats := StatsComponent.new()
+	stats.name = "StatsComponent"
+	var base := StatsData.new()
+	base.strength = 0
+	base.agility = 0
+	base.intelligence = 0
+	base.vitality = 0
+	base.luck = 0
+	base.armor = 0.0
+	base.dodge_chance = 0.0
+	base.block_chance = 0.0
+	base.crit_chance = 0.0
+	base.health_regen = 0.0
+	base.physical_damage = 0.0
+	base.max_health = health
+	stats.base_stats = base
+	actor.add_child(stats)
+	var combat := CombatComponent.new()
+	combat.name = "CombatComponent"
+	actor.add_child(combat)
+	return actor
+
+
+## 真实场景生命周期：攻击 -> 死亡 -> 掉落 -> 拾取 -> 装备 -> 属性与任务。
+func test_attack_loot_equipment_quest_flow() -> void:
+	start_test("攻击掉落拾取装备任务完整链路")
+	var tree = Engine.get_main_loop() as SceneTree
+	var world := Node2D.new()
+	world.position = Vector2(150.0, 90.0)
+	tree.current_scene.add_child(world)
+	var manager := TaskManager.new()
+	world.add_child(manager)
+	var task := _flow_task("flow_task", [
+		["kill_enemy", "goblin", 1], ["collect_item", "flow_sword", 1],
+		["equip_item", "flow_sword", 1]])
+	var passed := assert_true(manager.register_task(task), "任务注册")
+	passed = assert_true(manager.accept_task(task.task_id), "任务接取") and passed
+
+	var player := _flow_actor(100.0)
+	player.add_to_group("player")
+	var stats := player.get_node("StatsComponent") as StatsComponent
+	var inventory := InventoryManager.new()
+	inventory.name = "InventoryManager"
+	inventory.use_weight_limit = false
+	player.add_child(inventory)
+	var equipment := EquipmentManager.new()
+	equipment.stats_component = stats
+	equipment.inventory = inventory
+	inventory.equipment_manager = equipment
+	player.add_child(equipment)
+	world.add_child(player)
+	manager.set_player(player)
+
+	# 业务层显式桥接任务事件，不让核心系统隐式依赖任务系统。
+	inventory.item_added.connect(func(item: ItemInstance, _slot: int):
+		QuestEventBus.item_collected.emit(item.item_data.id, item.stack_count))
+	equipment.equipment_equipped.connect(func(slot: int, item: ItemInstance):
+		QuestEventBus.item_equipped.emit(item.item_data.id, EquipmentData.EquipSlot.keys()[slot]))
+
+	var template := DroppedItem.new()
+	var shape := CollisionShape2D.new()
+	shape.name = "CollisionShape2D"
+	shape.shape = CircleShape2D.new()
+	template.add_child(shape)
+	shape.owner = template
+	var packed := PackedScene.new()
+	packed.pack(template)
+	template.free()
+	var generator := LootGenerator.new()
+	generator.name = "LootGenerator"
+	generator.pool_size = 2
+	generator.dropped_item_scene = packed
+	generator.spawn_parent_path = world.get_path()
+	world.add_child(generator)
+
+	var sword := EquipmentData.new()
+	sword.id = "flow_sword"
+	sword.equip_slot = EquipmentData.EquipSlot.WEAPON_MAIN
+	var bonus := StatModifier.new()
+	bonus.stat_type = StatModifier.StatType.PHYSICAL_DAMAGE
+	bonus.modifier_type = StatModifier.ModifierType.FLAT
+	bonus.value = 25.0
+	sword.stat_modifiers.append(bonus)
+	var enemy := _flow_actor(20.0)
+	var loot := EnemyLootComponent.new()
+	loot.loot_generator = generator
+	loot.guaranteed_drops.append(sword)
+	enemy.add_child(loot)
+	world.add_child(enemy)
+	var enemy_combat := enemy.get_node("CombatComponent") as CombatComponent
+	enemy_combat.died.connect(func(_killer: Node):
+		QuestEventBus.enemy_killed.emit("goblin", "flow_enemy", 1))
+
+	var baseline := stats.get_stat(StatModifier.StatType.PHYSICAL_DAMAGE)
+	var combat := player.get_node("CombatComponent") as CombatComponent
+	combat.attack(enemy, 100.0)
+	passed = assert_equal(enemy_combat.combat_state, CombatState.State.DEAD, "敌人死亡") and passed
+	var drops := generator.get_all_drops()
+	passed = assert_equal(drops.size(), 1, "同级战斗组件死亡后只掉落一次") and passed
+	if drops.size() == 1:
+		passed = assert_equal(drops[0].global_position, enemy.global_position,
+			"有偏移的关卡中掉落位置仍等于敌人位置") and passed
+		drops[0]._on_body_entered(player)
+		passed = assert_equal(drops[0].current_state, DroppedItem.State.PICKED_UP, "进入拾取状态") and passed
+		var item := inventory.get_item(0)
+		passed = assert_not_null(item, "拾取物进入背包") and passed
+		if item:
+			passed = assert_equal(item.item_data.id, sword.id, "拾取正确物品") and passed
+			passed = assert_false(manager.is_task_completed(task.task_id), "装备前任务尚未完成") and passed
+			passed = assert_not_null(inventory.equip_item(0), "背包装备成功") and passed
+			passed = assert_null(inventory.get_item(0), "装备后移出背包") and passed
+			passed = assert_equal(equipment.get_equipped(sword.equip_slot), item, "装备实例一致") and passed
+			passed = assert_almost_equal(stats.get_stat(StatModifier.StatType.PHYSICAL_DAMAGE),
+				baseline + 25.0, 0.001, "装备属性仅增加一次") and passed
+			passed = assert_true(manager.is_task_completed(task.task_id), "三种事件共同完成任务") and passed
+	# 等待拾取销毁和战斗恢复计时器，避免悬挂协程。
+	await tree.create_timer(0.65).timeout
+	world.free()
 	end_test(passed)

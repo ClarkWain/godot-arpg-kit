@@ -127,6 +127,19 @@ func split_stack(amount: int) -> ItemInstance:
 	return new_instance
 
 
+## 创建数量与运行时元数据的快照（保留追踪 ID，不创建新的游戏物品）。
+func copy() -> ItemInstance:
+	var snapshot := ItemInstance.new()
+	snapshot.item_data = item_data
+	snapshot.stack_count = stack_count
+	snapshot.current_durability = current_durability
+	snapshot.random_modifiers = random_modifiers.duplicate()
+	snapshot.instance_id = instance_id
+	snapshot.is_bound = is_bound
+	snapshot.custom_data = custom_data.duplicate(true)
+	return snapshot
+
+
 ## ========== 属性获取 ==========
 
 ## 获取总重量
@@ -221,7 +234,7 @@ func to_dict() -> Dictionary:
 		"stack_count": stack_count,
 		"instance_id": instance_id,
 		"is_bound": is_bound,
-		"custom_data": custom_data
+		"custom_data": custom_data.duplicate(true)
 	}
 	
 	# 保存耐久度
@@ -245,31 +258,54 @@ func to_dict() -> Dictionary:
 ## 从字典反序列化
 static func from_dict(data: Dictionary, item_database: Dictionary) -> ItemInstance:
 	var item_id = data.get("item_id", "")
-	if not item_database.has(item_id):
-		push_error("ItemInstance.from_dict: 找不到物品 ID: " + item_id)
+	if not item_id is String or not item_database.get(item_id) is ItemData:
 		return null
-	
-	var tmp_item_data = item_database[item_id]
-	var instance = create(tmp_item_data, data.get("stack_count", 1))
-	
+	var definition: ItemData = item_database[item_id]
+	var count = data.get("stack_count", 1)
+	if not valid_saved_integer(count, 1, definition.max_stack):
+		return null
+	if not data.get("is_bound", false) is bool or not data.get("custom_data", {}) is Dictionary:
+		return null
+	if data.has("instance_id") and (not data.instance_id is String or data.instance_id.is_empty()):
+		return null
+	if data.has("durability"):
+		if not definition is EquipmentData or not definition.has_durability:
+			return null
+		if not valid_saved_integer(data.durability, 0, definition.max_durability):
+			return null
+	var modifiers = data.get("random_modifiers", [])
+	if not modifiers is Array:
+		return null
+	for modifier in modifiers:
+		if not modifier is Dictionary:
+			return null
+		if not valid_saved_integer(modifier.get("stat_type"), 0, StatModifier.StatType.size() - 1):
+			return null
+		if not valid_saved_integer(modifier.get("modifier_type"), 0, StatModifier.ModifierType.size() - 1):
+			return null
+		var value = modifier.get("value")
+		if not (value is int or value is float) or not is_finite(float(value)):
+			return null
+	var instance = create(definition, int(count))
 	instance.instance_id = data.get("instance_id", instance.instance_id)
 	instance.is_bound = data.get("is_bound", false)
-	instance.custom_data = data.get("custom_data", {})
-	
-	# 恢复耐久度
+	instance.custom_data = data.get("custom_data", {}).duplicate(true)
 	if data.has("durability"):
-		instance.current_durability = data["durability"]
-	
-	# 恢复随机属性
-	if data.has("random_modifiers"):
-		for mod_data in data["random_modifiers"]:
-			var mod = StatModifier.new()
-			mod.stat_type = mod_data["stat_type"]
-			mod.modifier_type = mod_data["modifier_type"]
-			mod.value = mod_data["value"]
-			instance.random_modifiers.append(mod)
-	
+		instance.current_durability = int(data.durability)
+	for modifier in modifiers:
+		var mod = StatModifier.new()
+		mod.stat_type = int(modifier.stat_type)
+		mod.modifier_type = int(modifier.modifier_type)
+		mod.value = float(modifier.value)
+		instance.random_modifiers.append(mod)
 	return instance
+
+
+## JSON numbers may be floats; reject fractional, nonfinite and unsafe integers.
+static func valid_saved_integer(value: Variant, minimum: int, maximum: int) -> bool:
+	if not (value is int or value is float):
+		return false
+	return is_finite(float(value)) and value >= minimum and value <= maximum and abs(float(value)) <= 9007199254740991.0 and floor(value) == value
 
 
 ## ========== 内部方法 ==========

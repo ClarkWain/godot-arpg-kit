@@ -32,7 +32,7 @@ signal task_claimed(task_id: String)
 signal task_abandoned(task_id: String)
 
 func _ready() -> void:
-	if instance == null:
+	if not is_instance_valid(instance):
 		instance = self
 	else:
 		# 在测试环境中，可能会多次创建 TaskManager，这里只打印警告但不销毁，
@@ -41,6 +41,10 @@ func _ready() -> void:
 		instance = self
 		# queue_free() # 在测试中不要销毁，否则可能会导致引用问题
 		return
+
+func _exit_tree() -> void:
+	if instance == self:
+		instance = null
 
 ## 注册任务数据
 func register_task(task_data: TaskData) -> bool:
@@ -298,31 +302,81 @@ func save_data() -> Dictionary:
 	}
 
 ## 加载任务数据
-func load_data(data: Dictionary) -> void:
-	player_tasks.clear()
-	_task_signal_connections.clear()
-	
+func load_data(data: Dictionary) -> bool:
 	var tasks_data = data.get("tasks", [])
+	if not tasks_data is Array:
+		return false
+	var restored: Dictionary[String, TaskInstance] = {}
 	for task_dict in tasks_data:
-		var task_id = task_dict.get("task_id", "")
-		if not registered_tasks.has(task_id):
-			push_warning("Task %s not registered, skipping" % task_id)
-			continue
-		
-		var task_data: TaskData = registered_tasks[task_id]
-		var instance = TaskInstance.new(task_data)
-		instance.from_dict(task_dict)
-		
-		# 重新连接信号
+		if not task_dict is Dictionary or not _valid_saved_task(task_dict):
+			return false
+		var task_id: String = task_dict.get("task_id", "")
+		if not registered_tasks.has(task_id) or restored.has(task_id):
+			return false
+		var instance = TaskInstance.new(registered_tasks[task_id])
+		instance.from_dict(task_dict.duplicate(true))
+		restored[task_id] = instance
+
+	# Commit only after every entry has been decoded successfully.
+	for task_id in player_tasks:
+		var previous: TaskInstance = player_tasks[task_id]
+		var state_callback = _on_task_state_changed.bind(task_id)
+		var progress_callback = _on_task_progress_updated.bind(task_id)
+		if previous.state_changed.is_connected(state_callback):
+			previous.state_changed.disconnect(state_callback)
+		if previous.progress_updated.is_connected(progress_callback):
+			previous.progress_updated.disconnect(progress_callback)
+	player_tasks = restored
+	_task_signal_connections.clear()
+	_event_index.clear()
+	for task_id in player_tasks:
+		var instance: TaskInstance = player_tasks[task_id]
 		instance.state_changed.connect(_on_task_state_changed.bind(task_id))
 		instance.progress_updated.connect(_on_task_progress_updated.bind(task_id))
 		_task_signal_connections[task_id] = true
-		
-		player_tasks[task_id] = instance
-		
-		# 如果是活跃任务，重建索引
-		if instance.state == TaskState.State.ACTIVE:
-			_update_event_index(task_id)
+		_update_event_index(task_id)
+	return true
+
+func _valid_saved_task(data: Dictionary) -> bool:
+	if not data.get("task_id", "") is String:
+		return false
+	var saved_state = data.get("state", TaskState.State.LOCKED)
+	if not _saved_number(saved_state, 0, TaskState.State.ABANDONED, true):
+		return false
+	for field in ["start_time", "completion_time", "last_completion_time", "completion_count"]:
+		if not _saved_number(data.get(field, 0), 0, INF, field == "completion_count"):
+			return false
+	for field in ["progress_data", "metadata"]:
+		if not data.get(field, {}) is Dictionary:
+			return false
+	var objectives = data.get("objectives", [])
+	if not objectives is Array:
+		return false
+	var ids: Dictionary = {}
+	for objective in objectives:
+		if not objective is Dictionary:
+			return false
+		var objective_id = objective.get("objective_id", "")
+		if not objective_id is String or ids.has(objective_id):
+			return false
+		ids[objective_id] = true
+		if not objective.get("is_completed", false) is bool or not objective.get("custom_data", {}) is Dictionary:
+			return false
+		if not _saved_number(objective.get("progress", 0), 0, 1, false):
+			return false
+		if not _saved_number(objective.get("current_count", 0), 0, INF, true):
+			return false
+		var current_state = objective.get("current_state", "")
+		if not (current_state is String or current_state is StringName):
+			return false
+	return true
+
+func _saved_number(value: Variant, minimum: float, maximum: float, integer: bool) -> bool:
+	if not (value is int or value is float):
+		return false
+	if integer and abs(float(value)) > 9007199254740991.0:
+		return false
+	return is_finite(float(value)) and value >= minimum and value <= maximum and (not integer or floor(value) == value)
 
 ## 构建上下文数据
 func _build_context() -> TaskContext:

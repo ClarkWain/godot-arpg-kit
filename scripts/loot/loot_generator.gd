@@ -10,6 +10,10 @@ extends Node
 signal loot_spawned(dropped_items: Array)
 ## 掉落物被拾取
 signal loot_picked_up(item: ItemInstance, picker: Node2D)
+signal gold_picked_up(amount: int, picker: Node2D)
+
+## 可选同步事务处理器，签名与 DroppedItem.pickup_handler 相同。
+var pickup_handler: Callable
 
 ## ========== 配置 ==========
 @export_group("Spawn Settings")
@@ -38,6 +42,8 @@ signal loot_picked_up(item: ItemInstance, picker: Node2D)
 var _spawn_parent: Node
 var _item_pool: Array[DroppedItem] = []
 var _pool_index: int = 0
+var _pool_storage: Node
+var _active_drops: Array[DroppedItem] = []
 
 
 func _ready():
@@ -126,63 +132,70 @@ func spawn_gold(amount: int, spawn_position: Vector2) -> DroppedItem:
 
 ## 创建掉落物实体
 func _create_dropped_item(item: ItemInstance, position: Vector2) -> DroppedItem:
-	var dropped: DroppedItem
-	
-	# 从对象池获取或创建新实例
-	if use_pooling:
-		dropped = _get_from_pool()
-	
+	var dropped := _create_drop(dropped_item_scene)
 	if not dropped:
-		if not dropped_item_scene:
-			push_error("LootGenerator: 未设置 dropped_item_scene")
-			return null
-		
-		dropped = dropped_item_scene.instantiate() as DroppedItem
-		if not dropped:
-			push_error("LootGenerator: dropped_item_scene 不是 DroppedItem 类型")
-			return null
-	
-	# 设置物品数据
+		return null
 	dropped.setup_item(item)
-	dropped.global_position = position
-	
-	# 连接信号
-	if not dropped.item_picked_up.is_connected(_on_item_picked_up):
-		dropped.item_picked_up.connect(_on_item_picked_up)
-	
-	# 添加到场景
-	_spawn_parent.add_child(dropped)
-	
+	_activate_drop(dropped, position)
 	return dropped
 
 
-## 创建金币掉落物
+## 创建金币掉落物（专用金币场景不混用通用物品池）。
 func _create_gold_drop(amount: int, position: Vector2) -> DroppedItem:
-	var dropped: DroppedItem
-	
-	# 使用专用金币场景或通用场景
-	var scene = gold_drop_scene if gold_drop_scene else dropped_item_scene
-	
+	var scene := gold_drop_scene if gold_drop_scene else dropped_item_scene
+	var dropped := _create_drop(scene)
+	if not dropped:
+		return null
+	dropped.setup_gold(amount)
+	_activate_drop(dropped, position)
+	return dropped
+
+
+func _create_drop(scene: PackedScene) -> DroppedItem:
+	if not is_instance_valid(_spawn_parent) or not _spawn_parent.is_inside_tree():
+		_spawn_parent = get_tree().current_scene if is_inside_tree() else null
+	if not is_instance_valid(_spawn_parent):
+		push_warning("LootGenerator: 未找到掉落物父节点")
+		return null
 	if not scene:
 		push_error("LootGenerator: 未设置掉落物场景")
 		return null
-	
-	dropped = scene.instantiate() as DroppedItem
-	if not dropped:
+	if use_pooling and scene == dropped_item_scene:
+		var pooled := _get_from_pool()
+		if pooled:
+			return pooled
+	var node := scene.instantiate()
+	if not node is DroppedItem:
+		node.free()
+		push_error("LootGenerator: 掉落物场景不是 DroppedItem 类型")
 		return null
-	
-	# 设置金币数据
-	dropped.setup_gold(amount)
-	dropped.global_position = position
-	
-	# 连接信号
+	return node as DroppedItem
+
+
+func _activate_drop(dropped: DroppedItem, position: Vector2) -> void:
+	dropped.pickup_handler = pickup_handler
 	if not dropped.item_picked_up.is_connected(_on_item_picked_up):
 		dropped.item_picked_up.connect(_on_item_picked_up)
-	
-	# 添加到场景
+	if not dropped.gold_picked_up.is_connected(_on_gold_picked_up):
+		dropped.gold_picked_up.connect(_on_gold_picked_up)
+	var exiting := _forget_active.bind(dropped)
+	if not dropped.tree_exiting.is_connected(exiting):
+		dropped.tree_exiting.connect(exiting)
+	_active_drops.append(dropped)
 	_spawn_parent.add_child(dropped)
-	
-	return dropped
+	dropped.global_position = position
+
+
+func _forget_active(dropped: DroppedItem) -> void:
+	_active_drops.erase(dropped)
+
+
+func _exit_tree() -> void:
+	# 活跃池对象可能在外部关卡节点下；生成器仍负责结束它们。
+	for dropped in _active_drops.duplicate():
+		if is_instance_valid(dropped):
+			dropped.queue_free()
+	_active_drops.clear()
 
 
 ## 应用散开效果
@@ -213,45 +226,78 @@ func _apply_scatter(items: Array[DroppedItem], center: Vector2):
 
 ## ========== 对象池管理 ==========
 
-## 初始化对象池
+## 空闲对象由生成器的子节点持有，随生成器销毁，避免孤立节点泄漏。
 func _initialize_pool():
+	_pool_storage = Node.new()
+	_pool_storage.name = "InactiveDrops"
+	_pool_storage.process_mode = Node.PROCESS_MODE_DISABLED
+	add_child(_pool_storage)
 	if not dropped_item_scene:
 		return
-	
-	_item_pool.clear()
-	for i in range(pool_size):
-		var item = dropped_item_scene.instantiate() as DroppedItem
-		if item:
-			item.visible = false
-			_item_pool.append(item)
+	for i in range(maxi(0, pool_size)):
+		_add_pool_item()
 
 
-## 从对象池获取
-func _get_from_pool() -> DroppedItem:
-	if _item_pool.is_empty():
+func _add_pool_item() -> DroppedItem:
+	var node := dropped_item_scene.instantiate()
+	if not node is DroppedItem:
+		node.free()
 		return null
-	
-	# 寻找未使用的对象
+	var item := node as DroppedItem
+	item.recycle_handler = _return_to_pool
+	_pool_storage.add_child(item)
+	_item_pool.append(item)
+	_park_drop(item)
+	return item
+
+
+func _park_drop(item: DroppedItem) -> void:
+	if is_instance_valid(item._release_timer):
+		item._release_timer.stop()
+	item.item_instance = null
+	item.gold_amount = 0
+	item._target_player = null
+	item.visible = false
+	item.set_process(false)
+	item.monitoring = false
+	item.monitorable = false
+
+
+## 池满时返回 null，由调用方创建普通对象；外部已释放的池对象会补齐。
+func _get_from_pool() -> DroppedItem:
+	if not is_instance_valid(_pool_storage):
+		_initialize_pool()
+	for i in range(_item_pool.size() - 1, -1, -1):
+		if not is_instance_valid(_item_pool[i]) or _item_pool[i].is_queued_for_deletion():
+			_item_pool.remove_at(i)
 	for i in range(_item_pool.size()):
-		var item = _item_pool[_pool_index]
+		_pool_index %= _item_pool.size()
+		var item := _item_pool[_pool_index]
 		_pool_index = (_pool_index + 1) % _item_pool.size()
-		
-		if not item.is_inside_tree():
-			item.visible = true
+		if item.get_parent() == _pool_storage:
+			_pool_storage.remove_child(item)
+			item.monitoring = true
+			item.monitorable = true
 			return item
-	
+	if _item_pool.size() < maxi(0, pool_size):
+		var item := _add_pool_item()
+		if item:
+			_pool_storage.remove_child(item)
+			item.monitoring = true
+			item.monitorable = true
+			return item
 	return null
 
 
-## 归还到对象池
-func _return_to_pool(item: DroppedItem):
-	if not use_pooling or item not in _item_pool:
+func _return_to_pool(item: DroppedItem) -> void:
+	if not is_instance_valid(item) or item not in _item_pool:
 		return
-	
-	if item.is_inside_tree():
-		item.get_parent().remove_child(item)
-	
-	item.visible = false
+	if not is_instance_valid(_pool_storage) or not is_inside_tree():
+		item.queue_free()
+		return
+	if item.get_parent() != _pool_storage:
+		item.reparent(_pool_storage)
+	_park_drop(item)
 
 
 ## ========== 信号处理 ==========
@@ -260,23 +306,25 @@ func _on_item_picked_up(item: ItemInstance, picker: Node2D):
 	loot_picked_up.emit(item, picker)
 
 
+func _on_gold_picked_up(amount: int, picker: Node2D) -> void:
+	gold_picked_up.emit(amount, picker)
+
+
 ## ========== 工具方法 ==========
 
 ## 清除场景中的所有掉落物
 func clear_all_drops():
-	for child in _spawn_parent.get_children():
-		if child is DroppedItem:
-			child.queue_free()
+	for dropped in _active_drops.duplicate():
+		if is_instance_valid(dropped) and not dropped.is_queued_for_deletion():
+			dropped._finish_lifetime()
 
 
-## 获取场景中的所有掉落物
+## 只返回本生成器拥有的活跃掉落物，不混入其他生成器或空闲池对象。
 func get_all_drops() -> Array[DroppedItem]:
 	var drops: Array[DroppedItem] = []
-	
-	for child in _spawn_parent.get_children():
-		if child is DroppedItem:
-			drops.append(child)
-	
+	for dropped in _active_drops:
+		if is_instance_valid(dropped) and not dropped.is_queued_for_deletion():
+			drops.append(dropped)
 	return drops
 
 
