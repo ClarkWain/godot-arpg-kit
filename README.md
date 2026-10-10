@@ -12,7 +12,7 @@
 
 ---
 
-> **待审核版本 v0.2.0（尚未发布）**：本分支包含接入行为变化。旧项目升级请阅读 [升级与审核指南](docs/migration-v0.2.0.md)，完整记录见 [CHANGELOG](CHANGELOG.md)。
+> **v0.2.0**：此版本包含接入行为变化。旧项目升级请阅读 [升级指南](docs/migration-v0.2.0.md)，完整记录见 [CHANGELOG](CHANGELOG.md)。
 
 ## 一、这个项目是什么
 
