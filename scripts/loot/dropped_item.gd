@@ -16,10 +16,18 @@ enum State {
 }
 
 ## ========== 信号 ==========
-## 物品被拾取
+## 入包成功后通知；部分拾取时数量为实际转移量的快照。
 signal item_picked_up(item: ItemInstance, picker: Node2D)
+signal gold_picked_up(amount: int, picker: Node2D)
 ## 物品消失
 signal item_despawned(item: ItemInstance)
+
+## 可选的同步拾取处理器：(drop: DroppedItem, picker: Node2D) -> bool。
+## true 表示全部接受；false 表示拒绝，或将 item_instance.stack_count 改为余量。
+## 未设置时自动使用拾取者的 InventoryManager，含金币。
+var pickup_handler: Callable
+## 池化对象由生成器设置回收处理器，普通对象结束后销毁。
+var recycle_handler: Callable
 
 ## ========== 核心数据 ==========
 ## 物品实例
@@ -77,6 +85,10 @@ var _despawn_timer: float = 0.0
 var _blink_timer: float = 0.0
 var _target_player: Node2D = null
 var _scatter_complete: bool = false
+var _pickup_in_progress: bool = false
+var _release_timer: Timer
+var _fade_timer: float = 0.0
+var _initial_sprite_texture: Texture2D
 
 ## 节点引用
 @onready var sprite: Sprite2D = get_node_or_null(sprite_path)
@@ -93,6 +105,14 @@ func _ready():
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered)
 	
+	_release_timer = Timer.new()
+	_release_timer.one_shot = true
+	_release_timer.timeout.connect(_finish_lifetime)
+	add_child(_release_timer)
+
+	# 保存场景自带图标，物品池复用为金币时不能保留上件物品图标。
+	if sprite:
+		_initial_sprite_texture = sprite.texture
 	# 初始化视觉效果
 	_update_visual()
 	
@@ -118,6 +138,7 @@ func _process(delta: float):
 func setup_item(item: ItemInstance):
 	item_instance = item
 	gold_amount = 0
+	_reset_runtime_state()
 	_update_visual()
 
 
@@ -125,7 +146,35 @@ func setup_item(item: ItemInstance):
 func setup_gold(amount: int):
 	item_instance = null
 	gold_amount = amount
+	_reset_runtime_state()
 	_update_visual()
+
+
+## 每次从池中借出都重置计时器、动画、磁吸目标及透明度。
+func _reset_runtime_state() -> void:
+	if is_instance_valid(_release_timer):
+		_release_timer.stop()
+	current_state = State.SPAWNING
+	_spawn_timer = 0.0
+	_despawn_timer = 0.0
+	_blink_timer = 0.0
+	_fade_timer = 0.0
+	_target_player = null
+	_pickup_in_progress = false
+	visible = true
+	set_process(true)
+	if sprite:
+		sprite.modulate.a = 1.0
+	if glow:
+		glow.modulate.a = 1.0
+	_start_spawn_animation()
+
+
+func _finish_lifetime() -> void:
+	if recycle_handler.is_valid():
+		recycle_handler.call(self)
+	else:
+		queue_free()
 
 
 ## ========== 状态处理 ==========
@@ -170,7 +219,7 @@ func _process_idle(delta: float):
 			despawn()
 	
 	# 检查磁吸范围
-	if enable_magnetism and _target_player:
+	if enable_magnetism and is_instance_valid(_target_player):
 		var distance = global_position.distance_to(_target_player.global_position)
 		if distance <= magnet_radius:
 			_change_state(State.ATTRACTING)
@@ -178,7 +227,7 @@ func _process_idle(delta: float):
 
 ## 处理磁吸状态
 func _process_attracting(delta: float):
-	if not _target_player or not is_instance_valid(_target_player):
+	if not is_instance_valid(_target_player):
 		_change_state(State.IDLE)
 		return
 	
@@ -194,14 +243,15 @@ func _process_attracting(delta: float):
 
 ## 处理消失状态
 func _process_despawning(delta: float):
-	# 淡出效果
+	_fade_timer += delta
+	var alpha := maxf(0.0, 1.0 - _fade_timer * 2.0)
 	if sprite:
-		sprite.modulate.a = max(0, sprite.modulate.a - delta * 2)
+		sprite.modulate.a = alpha
 	if glow:
-		glow.modulate.a = max(0, glow.modulate.a - delta * 2)
-	
-	if sprite and sprite.modulate.a <= 0:
-		queue_free()
+		glow.modulate.a = alpha
+	# 无 Sprite2D 的掉落物也必须结束生命周期。
+	if _fade_timer >= 0.5:
+		_finish_lifetime()
 
 
 ## ========== 拾取逻辑 ==========
@@ -223,26 +273,59 @@ func _on_area_entered(area: Area2D):
 			_target_player = body
 
 
-## 尝试拾取
-func _try_pickup(picker: Node2D):
-	if current_state == State.PICKED_UP:
-		return
-	
-	_change_state(State.PICKED_UP)
-	
-	# 播放拾取效果
-	_play_pickup_effect()
-	
-	# 发出信号
-	if item_instance:
-		item_picked_up.emit(item_instance, picker)
-	elif gold_amount > 0:
-		# 金币作为特殊信号发出
-		item_picked_up.emit(null, picker)
-	
-	# 延迟销毁（等待粒子效果播放完）
-	await get_tree().create_timer(0.5).timeout
-	queue_free()
+## 兼容已有碰撞/磁吸入口。
+func _try_pickup(picker: Node2D) -> bool:
+	return try_pickup(picker)
+
+
+## 同步提交拾取事务。返回 true 表示全部拾取；部分成功仍返回 false。
+func try_pickup(picker: Node2D) -> bool:
+	if _pickup_in_progress or current_state in [State.PICKED_UP, State.DESPAWNING]:
+		return false
+	if not is_instance_valid(picker) or not is_inside_tree():
+		return false
+	if item_instance and item_instance.stack_count <= 0:
+		return false
+	if not item_instance and gold_amount <= 0:
+		return false
+	_pickup_in_progress = true
+	var original_gold := gold_amount
+	var original_count := item_instance.stack_count if item_instance else 0
+	var snapshot := item_instance.copy() if item_instance else null
+	var accepted := false
+	if pickup_handler.is_valid():
+		accepted = pickup_handler.call(self, picker) == true
+	else:
+		var inventory = picker.get_node_or_null("InventoryManager")
+		if inventory is InventoryManager:
+			if item_instance:
+				accepted = inventory.add_item(item_instance)
+			else:
+				inventory.add_gold(gold_amount)
+				accepted = true
+	var transferred := original_count if accepted else 0
+	if not accepted and item_instance:
+		transferred = maxi(0, original_count - item_instance.stack_count)
+		if original_count > 0 and item_instance.stack_count == 0:
+			accepted = true
+	if accepted:
+		_change_state(State.PICKED_UP)
+		_play_pickup_effect()
+		# 定时器可在池化重用/清场时停止，不留下旧协程释放新掉落物。
+		_release_timer.start(0.5)
+	else:
+		_change_state(State.IDLE)
+		_target_player = null
+		_velocity = Vector2.ZERO
+		_update_visual()
+	if accepted or transferred > 0:
+		if snapshot:
+			snapshot.stack_count = transferred
+		if not snapshot:
+			gold_picked_up.emit(original_gold, picker)
+		item_picked_up.emit(snapshot, picker)
+	_pickup_in_progress = false
+	return accepted
 
 
 ## ========== 视觉效果 ==========
@@ -262,8 +345,8 @@ func _update_visual():
 			glow.visible = item_instance.item_data.rarity >= ItemData.Rarity.RARE
 	
 	elif gold_amount > 0:
-		# 金币图标（需要预设）
-		# sprite.texture = preload("res://assets/icons/gold_coin.png")
+		# 使用场景预设的金币图标，而非上一次池化物品的图标。
+		sprite.texture = _initial_sprite_texture
 		if glow:
 			glow.modulate = Color.GOLD
 			glow.visible = gold_amount >= 100  # 大额金币显示光晕
@@ -300,10 +383,11 @@ func _change_state(new_state: State):
 
 ## 手动消失
 func despawn():
-	if current_state == State.DESPAWNING:
+	if current_state in [State.DESPAWNING, State.PICKED_UP]:
 		return
 	
 	_change_state(State.DESPAWNING)
+	_fade_timer = 0.0
 	
 	if item_instance:
 		item_despawned.emit(item_instance)

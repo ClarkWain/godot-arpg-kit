@@ -197,6 +197,7 @@ func test_dot_effect() -> void:
 	var passed = assert_less(current_health, initial_health, "应造成持续伤害")
 	
 	entity.free()
+	source_entity.free()
 	end_test(passed)
 
 ## 测试: HOT效果
@@ -259,6 +260,7 @@ func test_hot_effect() -> void:
 	var passed = assert_greater(current_health, damaged_health, "应持续治疗")
 	
 	entity.free()
+	source_entity.free()
 	end_test(passed)
 
 ## 测试: Buff属性修改

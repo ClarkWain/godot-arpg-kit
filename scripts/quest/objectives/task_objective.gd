@@ -90,11 +90,11 @@ func to_dict() -> Dictionary:
 		"objective_id": objective_id,
 		"is_completed": is_completed,
 		"progress": progress,
-		"custom_data": custom_data
+		"custom_data": custom_data.duplicate(true)
 	}
 
 ## 从字典反序列化
 func from_dict(data: Dictionary) -> void:
 	is_completed = data.get("is_completed", false)
 	progress = data.get("progress", 0.0)
-	custom_data = data.get("custom_data", {})
+	custom_data = data.get("custom_data", {}).duplicate(true)

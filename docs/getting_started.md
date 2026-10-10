@@ -4,6 +4,8 @@
 
 > **目标读者**：想在自己的 Godot 4 · 2D ARPG / Roguelike 项目里复用本套系统，而不是从零造轮子的开发者。
 
+> 从 v0.1.x 升级到 v0.2.0 时，先阅读 [迁移指南](migration-v0.2.0.md)，尤其是拾取通知、装备引用与存档恢复约定。
+
 ---
 
 ## 一、集成方式选择
@@ -149,18 +151,49 @@ Enemy (CharacterBody2D)
 └─ EnemyLootComponent       [main_loot_table: goblin_loot_table.tres]
 ```
 
-`EnemyLootComponent._ready()` 会自动监听父节点的 `died` / `health_depleted` 信号；一旦敌人生命值归零就会通过 `LootGenerator` 生成掉落物。
+`EnemyLootComponent._ready()` 优先监听父节点的 `died` / `health_depleted`；父节点未转发死亡信号时，自动连接同级 `CombatComponent.died`，或回退到 `StatsComponent.health_depleted`。只订阅一个来源，避免重复掉落。
 
-如果你还没准备 `LootGenerator`，可以让它做全局 autoload：
+在关卡中添加一个名为 `LootGenerator` 的节点，挂载 `scripts/loot/loot_generator.gd`。在 Inspector 中设置 `dropped_item_scene`（根节点为 `DroppedItem`，含 `CollisionShape2D`）和掉落父节点。敌人的 `loot_generator` 引用可显式连接到这个节点。
 
-```ini
-[autoload]
-CombatEventBus="*res://scripts/combat/combat_event_bus.gd"
-QuestEventBus="*res://scripts/quest/quest_event_bus.gd"
-LootGenerator="*res://scripts/loot/loot_generator.gd"
+如需 autoload，使用包装场景并取名 `LootService` 等，避免与 `class_name LootGenerator` 冲突；包装场景内配置好掉落物场景和父节点，并显式设置敌人的生成器引用。
+
+拾取者拥有名为 `InventoryManager` 的子节点时，`DroppedItem` 默认先尝试入包或增加金币，再发出成功通知。背包满、超重或缺少接收方时掉落物不会因拾取消失；部分堆叠时只转移可接收的数量，余量留在地上。失败后可重新进入拾取范围或调用 `drop.try_pickup(player)` 重试。
+
+成功事件只用于 UI、音效和任务，不要在这些事件中再次调用 `add_item()` / `add_gold()`。例如：
+
+```gdscript
+func _ready():
+    $Player/InventoryManager.item_added.connect(
+        func(item: ItemInstance, _slot: int):
+            # stack_count 是本次实际新增数量，不是地上余量。
+            QuestEventBus.item_collected.emit(item.item_data.id, item.stack_count)
+    )
+    $LootGenerator.gold_picked_up.connect(
+        func(amount: int, _picker: Node2D):
+            print("本次拾取金币: ", amount)
+    )
 ```
 
-或者手工挂一个 `LootGenerator` 节点在你的关卡场景根。
+需要自己的背包或货币系统时，设置同步 `pickup_handler`，在处理器里执行转移并返回结果：
+
+```gdscript
+func _ready():
+    $LootGenerator.pickup_handler = _accept_pickup
+
+func _accept_pickup(drop: DroppedItem, picker: Node2D) -> bool:
+    var inventory := picker.get_node("InventoryManager") as InventoryManager
+    if drop.item_instance:
+        # add_item 返回 false 时，实例数量已减为未入包的余量。
+        return inventory.add_item(drop.item_instance)
+    inventory.add_gold(drop.gold_amount)
+    return true
+```
+
+处理器必须同步执行，不得 `await`，也不要自行销毁、换掉或回收 `drop`。物品全部接受返回 `true`；拒绝返回 `false` 且数量不变；部分接受返回 `false` 并把 `drop.item_instance.stack_count` 改为余量。金币处理器只支持全部接受或全部拒绝。生成器的处理器会应用于后续生成的对象；已生成对象可单独设置 `drop.pickup_handler`。
+
+**旧版本迁移**：原先在 `loot_picked_up` / `item_picked_up` 信号中入包的逻辑，需要移到 `pickup_handler`，或删除并使用默认背包处理。成功信号携带本次转移量的快照，不能把该快照再次当作新物品入包。
+
+任务系统可选：需要任务时把 `TaskManager` 节点加入场景树并注册、接取任务。事件总线每次派发时查找当前管理器，支持管理器晚于 autoload 创建和场景切换。未创建管理器时事件不缓存。
 
 ### 第 6 步：验证
 

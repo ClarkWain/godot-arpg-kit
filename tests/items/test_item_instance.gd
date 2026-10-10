@@ -10,6 +10,7 @@ func _init() -> void:
 func run_all_tests() -> void:
 	test_create_instance()
 	test_stack_management()
+	test_snapshot_preserves_metadata()
 
 	print_report()
 
@@ -53,4 +54,30 @@ func test_stack_management() -> void:
 	var unique2 = ItemInstance.create(unique_data, 1)
 	passed = assert_can_stack(unique1, unique2, false, "不可堆叠物品不应该可以堆叠") and passed
 
+	end_test(passed)
+
+
+## 事件快照不改变物品身份，数量/自定义数据与数组容器互相隔离。
+func test_snapshot_preserves_metadata() -> void:
+	start_test("物品事件快照保留元数据且隔离可变数量")
+	var data := EquipmentData.new()
+	data.id = "snapshot_equipment"
+	var item := ItemInstance.create(data)
+	item.current_durability = 42
+	item.is_bound = true
+	item.custom_data = {"nested": {"roll": 3}}
+	var modifier := StatModifier.new()
+	item.random_modifiers.append(modifier)
+	var snapshot := item.copy()
+	var passed := assert_equal(snapshot.item_data, item.item_data, "保留资源引用")
+	passed = assert_equal(snapshot.instance_id, item.instance_id, "保留追踪 ID") and passed
+	passed = assert_equal(snapshot.current_durability, 42, "保留耐久度") and passed
+	passed = assert_true(snapshot.is_bound, "保留绑定状态") and passed
+	passed = assert_equal(snapshot.random_modifiers, [modifier], "保留词缀") and passed
+	snapshot.stack_count = 7
+	snapshot.custom_data.nested.roll = 9
+	snapshot.random_modifiers.clear()
+	passed = assert_equal(item.stack_count, 1, "数量不共享") and passed
+	passed = assert_equal(item.custom_data.nested.roll, 3, "嵌套字典不共享") and passed
+	passed = assert_equal(item.random_modifiers.size(), 1, "词缀容器不共享") and passed
 	end_test(passed)

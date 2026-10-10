@@ -179,8 +179,8 @@ func to_dict() -> Dictionary:
 		"completion_time": completion_time,
 		"completion_count": completion_count,
 		"last_completion_time": last_completion_time,
-		"progress_data": progress_data,
-		"metadata": metadata
+		"progress_data": progress_data.duplicate(true),
+		"metadata": metadata.duplicate(true)
 	}
 
 ## 从字典反序列化
@@ -190,8 +190,8 @@ func from_dict(data: Dictionary) -> void:
 	completion_time = data.get("completion_time", 0.0)
 	completion_count = data.get("completion_count", 0)
 	last_completion_time = data.get("last_completion_time", 0.0)
-	progress_data = data.get("progress_data", {})
-	metadata = data.get("metadata", {})
+	progress_data = data.get("progress_data", {}).duplicate(true)
+	metadata = data.get("metadata", {}).duplicate(true)
 	
 	# 恢复目标进度
 	var objectives_data = data.get("objectives", [])

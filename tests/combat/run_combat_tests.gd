@@ -21,7 +21,7 @@ func _ready() -> void:
 	run_combat_component_tests()
 	run_status_effect_manager_tests()
 	run_skill_manager_tests()
-	run_integration_tests()
+	await run_integration_tests()
 	run_damage_pipeline_regression_tests()
 	run_high_priority_fixes_tests()
 	
@@ -80,7 +80,7 @@ func run_skill_manager_tests() -> void:
 func run_integration_tests() -> void:
 	print("\n--- 集成测试 ---")
 	var test = preload("res://tests/combat/test_integration.gd").new()
-	test.run_all_tests()
+	await test.run_all_tests()
 	_tally(test)
 
 ## 运行伤害管线回归测试（防止双重减伤 BUG 复发）

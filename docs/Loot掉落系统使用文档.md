@@ -277,40 +277,51 @@ dropped_item.magnet_radius = 120.0
 dropped_item.magnet_speed = 300.0
 ```
 
-### 拾取信号处理
+### 拾取事务与成功通知
+
+默认接收方是拾取者的 `InventoryManager` 子节点：物品先入包、金币先入账，成功后才通知。背包满、超重或没有接收方时不提交拾取，掉落物保留；部分堆叠的余量保留原地。返回 `false` 可能代表部分成功，应查看余量或成功通知。自然消失的配置仍然有效。
+
 ```gdscript
-# 连接拾取信号
-loot_generator.loot_picked_up.connect(_on_loot_picked_up)
+var complete := dropped_item.try_pickup(player_node)
 
-func _on_loot_picked_up(item: ItemInstance, picker: Node2D):
-    if item:
-        # 物品拾取
-        inventory.add_item(item)
-        print("拾取了: ", item.item_data.item_name)
-    else:
-        # 金币拾取（特殊处理）
-        var gold_amount = dropped_item.gold_amount
-        inventory.add_gold(gold_amount)
-        print("拾取了 ", gold_amount, " 金币")
-```
-
-### 自动拾取系统
-```gdscript
-# 扩展 InventoryManager 添加自动拾取
-func setup_auto_pickup():
-    loot_generator.loot_picked_up.connect(_on_auto_pickup)
-
-func _on_auto_pickup(item: ItemInstance, picker: Node2D):
-    if picker == player_node:  # 只处理玩家拾取
+# 只通知，不再次入包。item.stack_count 为本次转移量。
+loot_generator.loot_picked_up.connect(
+    func(item: ItemInstance, _picker: Node2D):
         if item:
-            var success = add_item(item)
-            if not success:
-                # 背包满，创建新的掉落物
-                loot_generator.spawn_item(item, picker.global_position)
-        else:
-            # 金币特殊处理
-            add_gold(dropped_item.gold_amount)
+            print("拾取了: ", item.item_data.item_name, " x", item.stack_count)
+)
+loot_generator.gold_picked_up.connect(
+    func(amount: int, _picker: Node2D):
+        print("拾取金币: ", amount)
+)
 ```
+
+成功物品负载是数量与元数据快照，保留追踪 ID。金币也保留旧 `loot_picked_up(null, picker)` 通知，但金额请从新 `gold_picked_up(amount, picker)` 信号获取。
+
+### 自定义接收方与旧版迁移
+
+自定义系统使用同步 `pickup_handler(drop, picker) -> bool`，生成器会把它传给后续生成的掉落物：
+
+```gdscript
+loot_generator.pickup_handler = func(drop: DroppedItem, picker: Node2D) -> bool:
+    var inventory := picker.get_node("InventoryManager") as InventoryManager
+    if drop.item_instance:
+        return inventory.add_item(drop.item_instance)
+    inventory.add_gold(drop.gold_amount)
+    return true
+```
+
+全部接受返回 `true`；拒绝返回 `false` 且数量不变；部分接受返回 `false` 并把实例数量减为剩余量。金币只支持全部接受或拒绝。处理器不得 `await`、替换掉落物实例或自行销毁/回收节点。
+
+旧版在拾取成功信号中调用 `add_item` / `add_gold` 的代码必须迁移到处理器，或改用默认接收方。成功通知不能再做转移，也无需“失败后重新生成掉落物”，否则会重复入包。
+
+### 对象池生命周期
+
+`use_pooling = true` 时，通用场景的物品与金币复用同一个池；专用 `gold_drop_scene` 使用独立普通实例，不混用通用池。池满时临时实例照常生成，结束后销毁。外部释放池对象后会安全补齐容量。
+
+每次借出重置状态、计时器、动画、透明度、图标与磁吸目标。拾取完成后保留 0.5 秒用于效果，再回收；清场会停止旧回收计时器，避免误删复用后的对象。空闲节点由生成器持有，生成器退出时同时结束它拥有的外部活跃掉落物。
+
+`get_all_drops()` / `clear_all_drops()` 只处理该生成器的活跃对象，不包含空闲池对象或其他生成器的掉落物。清场应通过 `clear_all_drops()`；自定义逻辑不要直接调用内部回池方法。
 
 ## 高级功能
 

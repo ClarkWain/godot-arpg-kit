@@ -7,11 +7,12 @@
   <img alt="Godot" src="https://img.shields.io/badge/Godot-4.5%2B-478CBF?logo=godotengine&logoColor=white">
   <img alt="Language" src="https://img.shields.io/badge/GDScript-100%25-blue">
   <a href="https://github.com/ClarkWain/godot-arpg-kit/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/ClarkWain/godot-arpg-kit/actions/workflows/tests.yml/badge.svg"></a>
-  <img alt="Local tests" src="https://img.shields.io/badge/local%20tests-189%2F189-brightgreen">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-lightgrey">
 </p>
 
 ---
+
+> **v0.2.0**：此版本包含接入行为变化。旧项目升级请阅读 [升级指南](docs/migration-v0.2.0.md)，完整记录见 [CHANGELOG](CHANGELOG.md)。
 
 ## 一、这个项目是什么
 
@@ -23,7 +24,7 @@
 - **数据驱动**：属性、物品、装备、技能、状态效果、掉落表全部是 `Resource`（`.tres`），可以在编辑器里可视化配置。
 - **纯 GDScript**：不需要 Mono / C# / 第三方 addon，直接 `git clone` 后 F5 打开就能用。
 - **事件总线解耦**：`CombatEventBus` / `QuestEventBus` 作为 autoload，各系统通过信号通信，避免硬耦合。
-- **测试覆盖**：189 个单元与回归测试，覆盖 5 大模块（Combat / Items / Loot / Quest / Stats）的关键路径。
+- **测试覆盖**：228 个单元与回归测试，覆盖 5 大模块（Combat / Items / Loot / Quest / Stats）的关键路径。
 
 ---
 
@@ -46,17 +47,15 @@ godot --editor
 
 ### 3. 运行测试
 
-**方式 A：一键脚本（推荐）**
+**方式 A：跨平台测试入口（推荐）**
 
-```powershell
-# Windows PowerShell
-pwsh tools/run_tests.ps1
-
-# 只跑某个模块
-pwsh tools/run_tests.ps1 -Only combat
+```bash
+# 需要 Python 3.9+；Windows 可用 py -3
+python3 tools/run_tests.py
+python3 tools/run_tests.py --only combat
 ```
 
-脚本会自动定位 Godot 可执行文件（可通过 `$env:GODOT` 覆盖），依次跑完 5 个模块共 189 个测试，按结果返回进程退出码。
+PowerShell 也可运行 `pwsh tools/run_tests.ps1`。通过 `GODOT` 或 `--godot` 指定引擎。入口会导入项目、验证真实测试汇总和退出码，并拒绝意外错误与资源泄漏。日志及本次计数写到 `.godot/test-results/run-*/summary.json`，详细规则见 [测试文档](tests/README.md)。
 
 **方式 B：直接调 Godot**
 
@@ -253,7 +252,7 @@ sequenceDiagram
 
 ## 六、测试与 CI
 
-### 测试套件（189 个）
+### 测试套件（228 个）
 
 | 套件 | 用例数 | 覆盖 |
 |---|---:|---|
@@ -262,22 +261,22 @@ sequenceDiagram
 | · CombatComponent | 9 | 初始化、攻击、受伤、状态机、连击、无敌、死亡、治疗、信号 |
 | · StatusEffectManager | 11 | 注册、叠加、DOT、HOT、Buff 属性、护盾、净化、元素追踪、序列化 |
 | · SkillManager | 10 | 冷却、施法时间、施法距离、资源消耗、打断、序列化 |
-| · 战斗系统集成 | 8 | 完整战斗流程、元素连招、Buff 增伤、DOT 击杀、护盾、装备加成、任务事件 |
+| · 战斗系统集成 | 9 | 完整战斗流程、元素连招、Buff 增伤、DOT 击杀、护盾、装备加成、延迟任务管理器、攻击掉落拾取装备任务链路 |
 | · **伤害管线回归**（新） | 6 | 双重减防 / 双重闪避 / 护盾单次消耗 / 端到端管线 / DOT 路径 / 死亡短路 |
 | · **高优先级 BUG 回归**（新） | 13 | 消耗品、EventBus autoload、击退向量、装备事务、部分堆叠、元素 debuff |
-| **Items** 套件 | 18 | ItemData / ItemInstance / EquipmentData / ConsumableData / WeaponData |
-| **Loot** 套件 | 11 | LootEntry / LootTable 概率、条件判断、权重抽取 |
-| **Quest** 套件 | 55 | TaskManager / TaskInstance / Objectives / Conditions / Rewards / 集成 |
+| **Items** 套件 | 38 | ItemData / ItemInstance / EquipmentData / ConsumableData / WeaponData / 装备转移与耐久生命周期 |
+| **Loot** 套件 | 26 | LootEntry / LootTable 概率、条件判断、权重抽取、拾取事务、对象池生命周期 |
+| **Quest** 套件 | 58 | TaskManager / TaskInstance / Objectives / Conditions / Rewards / 集成 |
 | **Stats** 套件 | 39 | StatsData / StatModifier / LuckSystem / StatsComponent |
-| **合计** | **189** | |
+| **合计** | **228** | |
 
 ### 一键运行
 
-```powershell
-pwsh tools/run_tests.ps1
+```bash
+python3 tools/run_tests.py
 ```
 
-退出码 `0` = 全部通过，`1` = 有失败，`2` = 未找到 Godot。
+退出码 `0` = 全部通过，`1` = 导入或测试失败，`2` = 参数错误或未找到 Godot。
 
 ### 预提交钩子
 
@@ -295,7 +294,7 @@ New-Item -ItemType SymbolicLink `
 
 ### GitHub Actions
 
-[.github/workflows/tests.yml](.github/workflows/tests.yml) 已配置好用 `barichello/godot-ci:4.5` headless 镜像，以 **matrix 方式并行** 跑 5 个模块（combat / items / loot / quest / stats）。推到 GitHub 后每次 push / pull_request 自动触发。
+[.github/workflows/tests.yml](.github/workflows/tests.yml) 使用官方 Godot 4.5 与 4.6.3 二进制，下载后校验官方 SHA-512。每个版本运行相同的跨平台入口和所有五个模块，并上传本次日志与汇总。测试数量以实际运行结果为准。
 
 ---
 
